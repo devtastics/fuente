@@ -21,6 +21,7 @@ public final class GutterView: NSRulerView {
         self.textView = textView
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = textView
+        clipsToBounds = true
         updateThickness()
     }
 
@@ -51,8 +52,9 @@ public final class GutterView: NSRulerView {
     }
 
     public override func draw(_ dirtyRect: NSRect) {
+        // AppKit hands rulers a dirty rect spanning the whole scroll view; never paint outside our column.
         backgroundColor.setFill()
-        dirtyRect.fill()
+        bounds.intersection(dirtyRect).fill()
         guard let textView else { return }
 
         let textRect = convert(dirtyRect, to: textView)
