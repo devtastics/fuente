@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  packages:
+    name: Packages (macOS ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [15, 26]
+    runs-on: macos-${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.app
+      - name: Build and test FuenteText
+        working-directory: Packages/FuenteText
+        run: |
+          swift build
+          swift test
+
+  dco:
+    name: DCO
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check Signed-off-by
+        run: |
+          missing=$(git log --format='%H %s%n%b' ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} \
+            | awk 'BEGIN{RS="\n\n"} !/Signed-off-by:/ {print}' | head -20)
+          if [ -n "$missing" ]; then echo "Commits without Signed-off-by:"; echo "$missing"; exit 1; fi
