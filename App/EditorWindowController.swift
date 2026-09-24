@@ -28,6 +28,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, TextVi
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.documentView = textView
+        textView.installGutter()
 
         window.delegate = self
         window.title = fileURL?.lastPathComponent ?? "Untitled"

@@ -52,6 +52,7 @@ extension TextView {
     func didEdit() {
         needsLayout = true
         needsDisplay = true
+        gutter?.updateThickness()
         delegate?.textViewDidChangeText(self)
     }
 

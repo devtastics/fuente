@@ -13,8 +13,23 @@ public final class TextView: NSView {
         didSet {
             guard selection != oldValue else { return }
             needsDisplay = true
+            gutter?.needsDisplay = true
             scrollCaretToVisible()
         }
+    }
+
+    /// The line-number ruler of the enclosing scroll view, if one is installed.
+    var gutter: GutterView? { enclosingScrollView?.verticalRulerView as? GutterView }
+
+    /// Installs a `GutterView` with line numbers in the enclosing scroll view.
+    @discardableResult
+    public func installGutter() -> GutterView? {
+        guard let scrollView = enclosingScrollView else { return nil }
+        let gutter = GutterView(scrollView: scrollView, textView: self)
+        scrollView.verticalRulerView = gutter
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = true
+        return gutter
     }
 
     /// When true, lines wrap at the visible width. Otherwise the view grows horizontally.
