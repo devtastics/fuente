@@ -19,6 +19,9 @@
 			<array>
 				<string>public.source-code</string>
 				<string>public.plain-text</string>
+				<string>public.text</string>
+				<string>public.json</string>
+				<string>public.yaml</string>
 			</array>
 		</dict>
 	</array>

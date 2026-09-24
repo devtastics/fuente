@@ -47,6 +47,9 @@ targets:
             LSItemContentTypes:
               - public.source-code
               - public.plain-text
+              - public.text
+              - public.json
+              - public.yaml
     scheme:
       testTargets: []
       gatherCoverageData: false

@@ -1,6 +1,6 @@
 import AppKit
 
-@main @MainActor
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowControllers: [EditorWindowController] = []
 
