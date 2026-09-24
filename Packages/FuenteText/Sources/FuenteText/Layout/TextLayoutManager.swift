@@ -87,6 +87,69 @@ public final class TextLayoutManager {
         return fragments
     }
 
+    // MARK: - Geometry
+
+    /// Rectangle of a caret placed before the character at `offset`, in text coordinates (no insets).
+    public func caretRect(at offset: Int) -> CGRect {
+        let line = storage.line(at: offset)
+        let fragments = ensureLayout(line)
+        let local = offset - storage.lineStarts[line]
+        var y = yOffset(ofLine: line)
+        for fragment in fragments {
+            let isLast = fragment === fragments.last
+            if fragment.range.contains(local) || (isLast && local >= fragment.range.upperBound) {
+                return CGRect(x: fragment.xOffset(for: local), y: y, width: 1, height: fragment.height)
+            }
+            y += fragment.height
+        }
+        return CGRect(x: 0, y: y, width: 1, height: estimatedLineHeight)
+    }
+
+    /// Offset closest to a point in text coordinates. Points above the document map to `0`, below it to the end.
+    public func offset(at point: CGPoint) -> Int {
+        guard point.y >= 0 else { return 0 }
+        guard point.y < contentHeight else { return storage.utf16Count }
+        let line = line(atY: point.y)
+        let fragments = ensureLayout(line)
+        var y = yOffset(ofLine: line)
+        var chosen = fragments[fragments.count - 1]
+        for fragment in fragments {
+            if point.y < y + fragment.height { chosen = fragment; break }
+            y += fragment.height
+        }
+        let local = min(chosen.offset(forX: point.x), chosen.range.upperBound)
+        return storage.lineStarts[line] + local
+    }
+
+    /// Rectangles covering a range, one per fragment row it touches, in text coordinates.
+    /// Rows where the range continues past the end of the row get `newlineWidth` extra to show it.
+    public func selectionRects(for range: Range<Int>, newlineWidth: CGFloat = 6) -> [CGRect] {
+        guard !range.isEmpty else { return [] }
+        var rects: [CGRect] = []
+        let firstLine = storage.line(at: range.lowerBound)
+        let lastLine = storage.line(at: range.upperBound)
+        for line in firstLine...lastLine {
+            let fragments = ensureLayout(line)
+            let lineStart = storage.lineStarts[line]
+            let lineEnd = storage.lineRange(line).upperBound
+            var y = yOffset(ofLine: line)
+            for fragment in fragments {
+                let rowStart = lineStart + fragment.range.lowerBound
+                let rowEnd = lineStart + fragment.range.upperBound
+                let from = max(range.lowerBound, rowStart)
+                let to = min(range.upperBound, rowEnd)
+                defer { y += fragment.height }
+                guard from <= to, from < rowEnd || (from == rowEnd && rowEnd == lineEnd && range.upperBound > lineEnd) else { continue }
+                var x1 = fragment.xOffset(for: from - lineStart)
+                var x2 = fragment.xOffset(for: to - lineStart)
+                if x2 < x1 { swap(&x1, &x2) }
+                let continuesPastRow = range.upperBound > rowEnd && rowEnd == lineEnd
+                rects.append(CGRect(x: x1, y: y, width: x2 - x1 + (continuesPastRow ? newlineWidth : 0), height: fragment.height))
+            }
+        }
+        return rects
+    }
+
     /// Edits the text and invalidates the lines the edit touched.
     public func replace(_ range: Range<Int>, with text: String) {
         let firstLine = storage.line(at: range.lowerBound)

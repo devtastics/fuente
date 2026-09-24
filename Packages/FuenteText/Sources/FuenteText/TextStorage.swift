@@ -47,6 +47,22 @@ public struct TextStorage: Sendable {
         return string[start..<end]
     }
 
+    /// Offset of the next grapheme cluster boundary, or `offset` itself at the end of the document.
+    public func offset(after offset: Int) -> Int {
+        let utf16 = string.utf16
+        let index = utf16.index(utf16.startIndex, offsetBy: offset)
+        guard index < string.endIndex else { return offset }
+        return utf16.distance(from: utf16.startIndex, to: string.index(after: index))
+    }
+
+    /// Offset of the previous grapheme cluster boundary, or `0` at the start of the document.
+    public func offset(before offset: Int) -> Int {
+        guard offset > 0 else { return 0 }
+        let utf16 = string.utf16
+        let index = utf16.index(utf16.startIndex, offsetBy: offset)
+        return utf16.distance(from: utf16.startIndex, to: string.index(before: index))
+    }
+
     /// Replaces a UTF-16 range with new text and updates line starts incrementally.
     public mutating func replace(_ range: Range<Int>, with replacement: String) {
         precondition(range.lowerBound >= 0 && range.upperBound <= utf16Count, "range out of bounds")

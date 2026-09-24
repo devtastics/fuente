@@ -20,14 +20,16 @@ final class EditorWindowController: NSWindowController {
 
         window.title = fileURL?.lastPathComponent ?? "Untitled"
         window.representedURL = fileURL
-        window.contentView = makeContentView()
+        let contentView = makeContentView()
+        window.contentView = contentView
+        window.initialFirstResponder = contentView.documentView
         window.center()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("EditorWindowController does not support NSCoding") }
 
-    private func makeContentView() -> NSView {
+    private func makeContentView() -> NSScrollView {
         let text = fileURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
         let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         let textView = TextView(storage: TextStorage(text), typesetter: LineTypesetter(font: font))

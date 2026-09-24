@@ -1,12 +1,21 @@
 import AppKit
 
-/// Draws a document using `TextLayoutManager`. Designed to be the `documentView` of an `NSScrollView`.
+/// Draws a document using `TextLayoutManager` and hosts the caret and selection.
+/// Designed to be the `documentView` of an `NSScrollView`.
 ///
-/// Read-only for now: this step is layout and rendering. Coordinates are flipped (y grows downward)
-/// so line 0 sits at the top and scrolling matches the layout manager's y offsets directly.
+/// Coordinates are flipped (y grows downward) so line 0 sits at the top and scrolling matches
+/// the layout manager's y offsets directly. Text is not editable yet: this step is navigation.
 @MainActor
 public final class TextView: NSView {
     public let layoutManager: TextLayoutManager
+
+    public var selection = TextSelection(caret: 0) {
+        didSet {
+            guard selection != oldValue else { return }
+            needsDisplay = true
+            scrollCaretToVisible()
+        }
+    }
 
     /// When true, lines wrap at the visible width. Otherwise the view grows horizontally.
     public var wrapsLines = true {
@@ -19,6 +28,9 @@ public final class TextView: NSView {
     /// Horizontal inset before the first glyph of every line.
     public var textInset: CGFloat = 8 { didSet { needsLayout = true } }
 
+    /// Column to keep while moving vertically, so the caret does not drift on short lines.
+    private var verticalMoveX: CGFloat?
+
     public init(storage: TextStorage, typesetter: LineTypesetter = LineTypesetter()) {
         self.layoutManager = TextLayoutManager(storage: storage, typesetter: typesetter)
         super.init(frame: .zero)
@@ -30,12 +42,29 @@ public final class TextView: NSView {
 
     public override var isFlipped: Bool { true }
     public override var isOpaque: Bool { true }
+    public override var acceptsFirstResponder: Bool { true }
+
+    public override func becomeFirstResponder() -> Bool {
+        needsDisplay = true
+        return super.becomeFirstResponder()
+    }
+
+    public override func resignFirstResponder() -> Bool {
+        needsDisplay = true
+        return super.resignFirstResponder()
+    }
+
+    private var isActive: Bool { window?.firstResponder === self }
 
     // MARK: - Sizing
 
     /// Width available for text: the clip view's width when scrolling, otherwise our own.
     private var availableWidth: CGFloat {
-        (enclosingScrollView?.contentView.bounds.width ?? bounds.width)
+        enclosingScrollView?.contentView.bounds.width ?? bounds.width
+    }
+
+    private var availableHeight: CGFloat {
+        enclosingScrollView?.contentView.bounds.height ?? 0
     }
 
     public override func viewDidMoveToSuperview() {
@@ -71,8 +100,21 @@ public final class TextView: NSView {
         }
     }
 
-    private var availableHeight: CGFloat {
-        enclosingScrollView?.contentView.bounds.height ?? 0
+    // MARK: - Geometry
+
+    /// Caret rectangle in view coordinates.
+    public var caretRect: CGRect {
+        layoutManager.caretRect(at: selection.head).offsetBy(dx: textInset, dy: 0)
+    }
+
+    /// Offset under a point in view coordinates.
+    public func offset(at point: CGPoint) -> Int {
+        layoutManager.offset(at: CGPoint(x: point.x - textInset, y: point.y))
+    }
+
+    private func scrollCaretToVisible() {
+        guard enclosingScrollView != nil else { return }
+        scrollToVisible(caretRect.insetBy(dx: -textInset, dy: 0))
     }
 
     // MARK: - Drawing
@@ -82,6 +124,8 @@ public final class TextView: NSView {
 
         backgroundColor.setFill()
         dirtyRect.fill()
+
+        drawSelection()
 
         // CoreText draws with y up; flip the text matrix once so glyphs come out upright in our flipped view.
         context.saveGState()
@@ -99,9 +143,138 @@ public final class TextView: NSView {
         }
         context.restoreGState()
 
+        drawCaret()
+
         // Typesetting real lines may have changed the document height; resize outside of draw.
         if layoutManager.contentHeight != heightBefore {
             needsLayout = true
         }
+    }
+
+    private func drawSelection() {
+        guard !selection.isEmpty else { return }
+        let color: NSColor = isActive ? .selectedTextBackgroundColor : .unemphasizedSelectedTextBackgroundColor
+        color.setFill()
+        for rect in layoutManager.selectionRects(for: selection.range) {
+            rect.offsetBy(dx: textInset, dy: 0).fill()
+        }
+    }
+
+    private func drawCaret() {
+        guard isActive, selection.isEmpty else { return }
+        NSColor.textInsertionPointColor.setFill()
+        caretRect.fill()
+    }
+
+    // MARK: - Mouse
+
+    public override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        let point = convert(event.locationInWindow, from: nil)
+        select(at: point, extending: event.modifierFlags.contains(.shift))
+    }
+
+    public override func mouseDragged(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        select(at: point, extending: true)
+    }
+
+    /// Places the caret at `point`, or extends the selection to it.
+    public func select(at point: CGPoint, extending: Bool) {
+        let offset = offset(at: point)
+        selection = extending ? TextSelection(anchor: selection.anchor, head: offset) : TextSelection(caret: offset)
+        verticalMoveX = nil
+    }
+
+    // MARK: - Keyboard
+
+    public override func keyDown(with event: NSEvent) {
+        interpretKeyEvents([event])
+    }
+
+    /// Typing is not supported yet; swallow it instead of beeping through the responder chain.
+    public override func insertText(_ insertString: Any) {}
+
+    private var storage: TextStorage { layoutManager.storage }
+
+    private func move(to offset: Int, extending: Bool) {
+        selection = extending ? TextSelection(anchor: selection.anchor, head: offset) : TextSelection(caret: offset)
+    }
+
+    private func moveHorizontally(to offset: Int, extending: Bool) {
+        verticalMoveX = nil
+        move(to: offset, extending: extending)
+    }
+
+    private func moveVertically(by rows: Int, extending: Bool) {
+        let caret = layoutManager.caretRect(at: selection.head)
+        let x = verticalMoveX ?? caret.minX
+        verticalMoveX = x
+        let y = rows > 0 ? caret.maxY + caret.height / 2 : caret.minY - caret.height / 2
+        let offset: Int
+        if y < 0 {
+            offset = 0
+        } else if y >= layoutManager.contentHeight {
+            offset = storage.utf16Count
+        } else {
+            offset = layoutManager.offset(at: CGPoint(x: x, y: y))
+        }
+        move(to: offset, extending: extending)
+    }
+
+    public override func moveLeft(_ sender: Any?) {
+        let target = selection.isEmpty ? storage.offset(before: selection.head) : selection.range.lowerBound
+        moveHorizontally(to: target, extending: false)
+    }
+
+    public override func moveRight(_ sender: Any?) {
+        let target = selection.isEmpty ? storage.offset(after: selection.head) : selection.range.upperBound
+        moveHorizontally(to: target, extending: false)
+    }
+
+    public override func moveLeftAndModifySelection(_ sender: Any?) {
+        moveHorizontally(to: storage.offset(before: selection.head), extending: true)
+    }
+
+    public override func moveRightAndModifySelection(_ sender: Any?) {
+        moveHorizontally(to: storage.offset(after: selection.head), extending: true)
+    }
+
+    public override func moveUp(_ sender: Any?) { moveVertically(by: -1, extending: false) }
+    public override func moveDown(_ sender: Any?) { moveVertically(by: 1, extending: false) }
+    public override func moveUpAndModifySelection(_ sender: Any?) { moveVertically(by: -1, extending: true) }
+    public override func moveDownAndModifySelection(_ sender: Any?) { moveVertically(by: 1, extending: true) }
+
+    private var currentLineRange: Range<Int> { storage.lineRange(storage.line(at: selection.head)) }
+
+    public override func moveToBeginningOfLine(_ sender: Any?) {
+        moveHorizontally(to: currentLineRange.lowerBound, extending: false)
+    }
+
+    public override func moveToEndOfLine(_ sender: Any?) {
+        moveHorizontally(to: currentLineRange.upperBound, extending: false)
+    }
+
+    public override func moveToBeginningOfLineAndModifySelection(_ sender: Any?) {
+        moveHorizontally(to: currentLineRange.lowerBound, extending: true)
+    }
+
+    public override func moveToEndOfLineAndModifySelection(_ sender: Any?) {
+        moveHorizontally(to: currentLineRange.upperBound, extending: true)
+    }
+
+    public override func moveToBeginningOfDocument(_ sender: Any?) { moveHorizontally(to: 0, extending: false) }
+    public override func moveToEndOfDocument(_ sender: Any?) { moveHorizontally(to: storage.utf16Count, extending: false) }
+
+    public override func moveToBeginningOfDocumentAndModifySelection(_ sender: Any?) {
+        moveHorizontally(to: 0, extending: true)
+    }
+
+    public override func moveToEndOfDocumentAndModifySelection(_ sender: Any?) {
+        moveHorizontally(to: storage.utf16Count, extending: true)
+    }
+
+    public override func selectAll(_ sender: Any?) {
+        selection = TextSelection(anchor: 0, head: storage.utf16Count)
     }
 }
