@@ -69,10 +69,4 @@ import Testing
         textView.select(at: CGPoint(x: origin.minX + 0.5, y: origin.midY), extending: true)
         #expect(textView.selection == TextSelection(anchor: 5, head: 1))
     }
-
-    @Test func typingIsIgnoredForNow() {
-        let textView = view("abc")
-        textView.insertText("x")
-        #expect(textView.layoutManager.storage.string == "abc")
-    }
 }

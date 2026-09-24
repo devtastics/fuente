@@ -7,6 +7,7 @@ enum MainMenu {
         let menu = NSMenu()
         menu.addItem(appMenu())
         menu.addItem(fileMenu())
+        menu.addItem(editMenu())
         menu.addItem(windowMenu())
         return menu
     }
@@ -26,6 +27,20 @@ enum MainMenu {
         submenu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
         submenu.addItem(.separator())
         submenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        submenu.addItem(withTitle: "Save", action: #selector(EditorWindowController.saveDocument(_:)), keyEquivalent: "s")
+        return item(submenu)
+    }
+
+    private static func editMenu() -> NSMenuItem {
+        let submenu = NSMenu(title: "Edit")
+        submenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        submenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        submenu.addItem(.separator())
+        submenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        submenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        submenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        submenu.addItem(.separator())
+        submenu.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
         return item(submenu)
     }
 

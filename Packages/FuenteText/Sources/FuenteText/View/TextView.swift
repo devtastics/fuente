@@ -28,6 +28,19 @@ public final class TextView: NSView {
     /// Horizontal inset before the first glyph of every line.
     public var textInset: CGFloat = 8 { didSet { needsLayout = true } }
 
+    public weak var delegate: TextViewDelegate?
+
+    /// Pasteboard used by cut/copy/paste. Injectable for tests.
+    public var pasteboard: NSPasteboard = .general
+
+    /// Text being composed by an input method or dead key, shown underlined until committed.
+    var composingRange: Range<Int>? { didSet { needsDisplay = true } }
+
+    /// Current run of contiguous typing for undo coalescing. `nil` when the run is broken.
+    var typingRun: TypingRun?
+
+    let textUndoManager = UndoManager()
+
     /// Column to keep while moving vertically, so the caret does not drift on short lines.
     private var verticalMoveX: CGFloat?
 
@@ -35,6 +48,7 @@ public final class TextView: NSView {
         self.layoutManager = TextLayoutManager(storage: storage, typesetter: typesetter)
         super.init(frame: .zero)
         wantsLayer = true
+        textUndoManager.groupsByEvent = false
     }
 
     @available(*, unavailable)
@@ -143,6 +157,7 @@ public final class TextView: NSView {
         }
         context.restoreGState()
 
+        drawMarkedText()
         drawCaret()
 
         // Typesetting real lines may have changed the document height; resize outside of draw.
@@ -157,6 +172,14 @@ public final class TextView: NSView {
         color.setFill()
         for rect in layoutManager.selectionRects(for: selection.range) {
             rect.offsetBy(dx: textInset, dy: 0).fill()
+        }
+    }
+
+    private func drawMarkedText() {
+        guard let composingRange else { return }
+        textColor.setFill()
+        for rect in layoutManager.selectionRects(for: composingRange, newlineWidth: 0) {
+            CGRect(x: rect.minX + textInset, y: rect.maxY - 1.5, width: rect.width, height: 1).fill()
         }
     }
 
@@ -184,6 +207,7 @@ public final class TextView: NSView {
         let offset = offset(at: point)
         selection = extending ? TextSelection(anchor: selection.anchor, head: offset) : TextSelection(caret: offset)
         verticalMoveX = nil
+        typingRun = nil
     }
 
     // MARK: - Keyboard
@@ -192,13 +216,15 @@ public final class TextView: NSView {
         interpretKeyEvents([event])
     }
 
-    /// Typing is not supported yet; swallow it instead of beeping through the responder chain.
-    public override func insertText(_ insertString: Any) {}
+    public override func insertText(_ insertString: Any) {
+        insertText(insertString, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
 
     private var storage: TextStorage { layoutManager.storage }
 
     private func move(to offset: Int, extending: Bool) {
         selection = extending ? TextSelection(anchor: selection.anchor, head: offset) : TextSelection(caret: offset)
+        typingRun = nil
     }
 
     private func moveHorizontally(to offset: Int, extending: Bool) {
@@ -276,5 +302,6 @@ public final class TextView: NSView {
 
     public override func selectAll(_ sender: Any?) {
         selection = TextSelection(anchor: 0, head: storage.utf16Count)
+        typingRun = nil
     }
 }
