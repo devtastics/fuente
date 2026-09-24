@@ -26,6 +26,20 @@ jobs:
           swift build
           swift test
 
+  app:
+    name: Fuente.app (macOS 26)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build app
+        run: |
+          xcodebuild -quiet -project Fuente.xcodeproj -scheme Fuente \
+            -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+
   dco:
     name: DCO
     runs-on: ubuntu-latest

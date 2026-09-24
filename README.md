@@ -23,6 +23,16 @@ Packages target one version lower than the app on purpose: they must never depen
 
 ## Building
 
+The Xcode project is generated from `project.yml` with [xcodegen](https://github.com/yonaskolb/XcodeGen) and is not committed.
+
+```sh
+brew install xcodegen
+xcodegen generate
+open Fuente.xcodeproj
+```
+
+Packages build and test on their own, without Xcode:
+
 ```sh
 cd Packages/FuenteText
 swift build

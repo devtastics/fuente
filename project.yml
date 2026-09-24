@@ -1,0 +1,52 @@
+name: Fuente
+options:
+  bundleIdPrefix: com.devtastics
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+packages:
+  FuenteText:
+    path: Packages/FuenteText
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: NO
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  Fuente:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    dependencies:
+      - package: FuenteText
+    info:
+      path: App/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Fuente
+        CFBundleName: Fuente
+        LSMinimumSystemVersion: "26.0"
+        NSPrincipalClass: NSApplication
+        NSHumanReadableCopyright: "Copyright © 2026 Fuente contributors. Apache License 2.0."
+        LSApplicationCategoryType: public.app-category.developer-tools
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Source Code
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.source-code
+              - public.plain-text
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
