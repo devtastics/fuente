@@ -53,7 +53,28 @@ enum MainMenu {
         submenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         submenu.addItem(.separator())
         submenu.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
+        submenu.addItem(.separator())
+        submenu.addItem(findMenuItem())
         return item(submenu)
+    }
+
+    /// The standard Find submenu. Items carry NSTextFinder action tags and reach the text view via the responder chain.
+    private static func findMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Find")
+        func add(_ title: String, _ action: NSTextFinder.Action, _ key: String, _ modifiers: NSEvent.ModifierFlags = [.command]) {
+            let entry = submenu.addItem(withTitle: title, action: #selector(NSResponder.performTextFinderAction(_:)), keyEquivalent: key)
+            entry.tag = action.rawValue
+            entry.keyEquivalentModifierMask = modifiers
+        }
+        add("Find…", .showFindInterface, "f")
+        add("Find and Replace…", .showReplaceInterface, "f", [.command, .option])
+        add("Find Next", .nextMatch, "g")
+        add("Find Previous", .previousMatch, "g", [.command, .shift])
+        add("Use Selection for Find", .setSearchString, "e")
+        add("Hide Find Bar", .hideFindInterface, "")
+        item.submenu = submenu
+        return item
     }
 
     private static func windowMenu() -> NSMenuItem {

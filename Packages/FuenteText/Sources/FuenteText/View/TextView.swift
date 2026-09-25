@@ -71,6 +71,9 @@ public final class TextView: NSView {
 
     let textUndoManager = UndoManager()
 
+    /// AppKit's find bar. Attached to the scroll view by `installTextFinder()`.
+    let textFinder = NSTextFinder()
+
     /// Column to keep while moving vertically, so the caret does not drift on short lines.
     private var verticalMoveX: CGFloat?
 
@@ -143,6 +146,7 @@ public final class TextView: NSView {
                 self, selector: #selector(clipViewBoundsChanged),
                 name: NSView.boundsDidChangeNotification, object: clipView
             )
+            installTextFinder()
         }
         needsLayout = true
     }

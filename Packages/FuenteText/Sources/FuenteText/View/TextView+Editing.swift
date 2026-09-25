@@ -24,6 +24,7 @@ extension TextView {
     func replace(_ range: Range<Int>, with text: String, selectionAfter: TextSelection? = nil, registerUndo: Bool = true) {
         let replaced = String(layoutManager.storage.substring(range))
         let newRange = range.lowerBound..<(range.lowerBound + text.utf16.count)
+        textFinder.noteClientStringWillChange()
 
         if registerUndo {
             let selectionBefore = selection
