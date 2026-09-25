@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// A capture name over a UTF-16 range of the document, e.g. `keyword` over `function`.
 public struct HighlightSpan: Sendable, Equatable {
@@ -24,12 +25,23 @@ public actor HighlightEngine {
         self.language = language
     }
 
+    private static let signposter = OSSignposter(subsystem: "com.devtastics.fuente", category: "syntax")
+
     /// Spans in document order. Where several patterns capture the same range, the first pattern in
     /// the query wins, matching tree-sitter's own highlighter. Nested spans follow their containers.
     public func highlights(for text: String) -> [HighlightSpan] {
-        let units = Array(text.utf16)
-        guard let tree = parser.parse(units) else { return [] }
+        highlights(for: Array(text.utf16))
+    }
 
+    /// Same, from UTF-16 code units: what `TextStorage` holds and what tree-sitter parses natively.
+    public func highlights(for units: [UInt16]) -> [HighlightSpan] {
+        let parseState = Self.signposter.beginInterval("parse")
+        let tree = parser.parse(units)
+        Self.signposter.endInterval("parse", parseState)
+        guard let tree else { return [] }
+
+        let queryState = Self.signposter.beginInterval("query")
+        defer { Self.signposter.endInterval("query", queryState) }
         let cursor = QueryCursor()
         cursor.execute(query, on: tree.rootNode)
 

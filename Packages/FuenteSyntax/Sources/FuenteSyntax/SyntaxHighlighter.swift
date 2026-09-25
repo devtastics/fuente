@@ -30,11 +30,13 @@ public final class SyntaxHighlighter {
     /// Cancels any pending pass and starts one for the current text. Results land back on the main actor.
     public func highlight() {
         task?.cancel()
-        let text = textView.layoutManager.storage.string
+        let units = textView.layoutManager.storage.utf16Units
         let engine = engine
         task = Task { [weak self] in
-            let spans = await engine.highlights(for: text)
+            let start = ContinuousClock.now
+            let spans = await engine.highlights(for: units)
             guard !Task.isCancelled, let self else { return }
+            EditorMetrics.shared.recordHighlight(ContinuousClock.now - start, spans: spans.count)
             self.lastSpans = spans
             self.apply(spans)
         }

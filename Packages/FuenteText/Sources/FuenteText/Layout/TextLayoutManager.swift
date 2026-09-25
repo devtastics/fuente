@@ -40,6 +40,9 @@ public final class TextLayoutManager {
     private var layouts: [[LineFragment]?]
     private var heights: PrefixSumTree
 
+    /// Lines currently holding glyph runs; the rest sit on estimated heights.
+    public private(set) var typesetLineCount = 0
+
     /// Colors over the document, sorted by start. `styleMaxEnds[i]` is the largest end among `styles[0...i]`,
     /// which lets the per-line lookup stop walking backwards as soon as no earlier style can reach the line.
     private var styles: [StyledRange] = []
@@ -141,6 +144,7 @@ public final class TextLayoutManager {
     /// Drops glyph runs but keeps heights. For color-only changes, such as highlighting or appearance.
     public func invalidateLayoutsKeepingHeights() {
         layouts = Array(repeating: nil, count: storage.lineCount)
+        typesetLineCount = 0
     }
 
     /// Fragments of a line, typesetting it now if it has none.
@@ -152,6 +156,7 @@ public final class TextLayoutManager {
         heights.add(height - self.height(ofLine: line), at: line)
         contentWidth = max(contentWidth, fragments.map(\.width).max() ?? 0)
         layouts[line] = fragments
+        typesetLineCount += 1
         return fragments
     }
 
@@ -231,6 +236,7 @@ public final class TextLayoutManager {
             for line in firstLine...lastOldLine { invalidate(line) }
         } else {
             layouts.replaceSubrange(firstLine...lastOldLine, with: replacement)
+            typesetLineCount = layouts.lazy.filter { $0 != nil }.count
             rebuildHeights()
         }
     }
@@ -238,11 +244,13 @@ public final class TextLayoutManager {
     private func invalidate(_ line: Int) {
         guard layouts[line] != nil else { return }
         layouts[line] = nil
+        typesetLineCount -= 1
         heights.add(estimatedLineHeight - height(ofLine: line), at: line)
     }
 
     private func invalidateAllLines() {
         layouts = Array(repeating: nil, count: storage.lineCount)
+        typesetLineCount = 0
         contentWidth = 0
         rebuildHeights()
     }

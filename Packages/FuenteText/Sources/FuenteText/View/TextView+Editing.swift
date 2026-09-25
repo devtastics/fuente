@@ -33,7 +33,9 @@ extension TextView {
             }
         }
 
-        layoutManager.replace(range, with: text)
+        let clock = ContinuousClock()
+        let elapsed = clock.measure { layoutManager.replace(range, with: text) }
+        EditorMetrics.shared.recordEdit(elapsed)
         selection = selectionAfter ?? TextSelection(caret: newRange.upperBound)
         didEdit()
     }

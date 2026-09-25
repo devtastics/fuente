@@ -15,6 +15,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    #if DEBUG
+    @objc func togglePerformanceHUD(_ sender: Any?) {
+        PerformanceHUD.shared.toggle()
+    }
+    #endif
+
     func application(_ application: NSApplication, open urls: [URL]) {
         urls.forEach(open)
     }

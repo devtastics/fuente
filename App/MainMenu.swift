@@ -9,8 +9,20 @@ enum MainMenu {
         menu.addItem(fileMenu())
         menu.addItem(editMenu())
         menu.addItem(windowMenu())
+        #if DEBUG
+        menu.addItem(debugMenu())
+        #endif
         return menu
     }
+
+    #if DEBUG
+    private static func debugMenu() -> NSMenuItem {
+        let submenu = NSMenu(title: "Debug")
+        let hud = submenu.addItem(withTitle: "Toggle Performance HUD", action: #selector(AppDelegate.togglePerformanceHUD(_:)), keyEquivalent: "p")
+        hud.keyEquivalentModifierMask = [.command, .option]
+        return item(submenu)
+    }
+    #endif
 
     private static func appMenu() -> NSMenuItem {
         let submenu = NSMenu()

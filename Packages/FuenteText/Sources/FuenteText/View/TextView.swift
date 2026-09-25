@@ -157,8 +157,14 @@ public final class TextView: NSView {
 
     public override func layout() {
         super.layout()
-        layoutManager.wrapWidth = wrapsLines ? max(0, availableWidth - textInset * 2) : nil
-        updateFrameSize()
+        let state = EditorMetrics.signposter.beginInterval("layout")
+        let clock = ContinuousClock()
+        let elapsed = clock.measure {
+            layoutManager.wrapWidth = wrapsLines ? max(0, availableWidth - textInset * 2) : nil
+            updateFrameSize()
+        }
+        EditorMetrics.signposter.endInterval("layout", state)
+        EditorMetrics.shared.recordLayout(elapsed)
     }
 
     /// Grows the view to the document's current size so the scroll view knows how far to scroll.
@@ -207,6 +213,13 @@ public final class TextView: NSView {
     // MARK: - Drawing
 
     public override func draw(_ dirtyRect: NSRect) {
+        let state = EditorMetrics.signposter.beginInterval("draw")
+        let start = ContinuousClock.now
+        defer {
+            EditorMetrics.signposter.endInterval("draw", state)
+            EditorMetrics.shared.recordDraw(ContinuousClock.now - start)
+            EditorMetrics.shared.recordLines(typeset: layoutManager.typesetLineCount, total: layoutManager.lineCount)
+        }
         guard let context = NSGraphicsContext.current?.cgContext else { return }
 
         backgroundColor.setFill()

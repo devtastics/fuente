@@ -27,6 +27,13 @@ jobs:
             (cd "$package" && swift build && swift test)
             echo "::endgroup::"
           done
+      - name: Performance budgets (release)
+        run: |
+          for package in Packages/FuenteText Packages/FuenteSyntax; do
+            echo "::group::$package"
+            (cd "$package" && swift test -c release -Xswiftc -enable-testing --filter PerformanceTests 2>&1 | grep -E "PERF|✘|✔ Test run|error" )
+            echo "::endgroup::"
+          done
 
   app:
     name: Fuente.app (macOS 26)
