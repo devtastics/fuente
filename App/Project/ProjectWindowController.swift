@@ -46,6 +46,14 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
         navigator.onSelectFile = { [weak self] url in self?.open(url) }
         editorArea.onChange = { [weak self] _ in self?.updateTitle() }
+        workspace.onFoldersChanged = { [weak self] nodes in self?.navigator.reload(nodes) }
+        workspace.onDocumentsChangedOnDisk = { [weak self] documents in
+            // Xcode's rule: unmodified documents follow the disk; edited ones keep the user's version.
+            for document in documents where !document.isDirty {
+                self?.editorArea.editor(for: document).reloadFromDisk()
+            }
+        }
+        workspace.startWatching()
         editorArea.tabBar.onSelect = { [weak self] document in self?.activate(document) }
         editorArea.tabBar.onClose = { [weak self] document in self?.close(document) }
     }

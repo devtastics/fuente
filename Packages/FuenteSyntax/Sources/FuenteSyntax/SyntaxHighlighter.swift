@@ -19,6 +19,11 @@ public final class SyntaxHighlighter {
     /// (hundreds of MB for a multi-megabyte file), so they live only while typing is likely to continue.
     public var treeIdleTimeout: Duration = .seconds(4)
 
+    /// Above this many bytes of source the tree is released right after every pass instead of kept for
+    /// incremental parsing: at ~60 bytes of tree per byte of source, a 5 MB file would hold 300 MB.
+    /// Such files pay a full parse per keystroke, off the main thread, and stay cheap in memory.
+    public var maxRetainedTreeSourceBytes = 2_000_000
+
     private let engine: HighlightEngine
     private var task: Task<Void, Never>?
     private var idleTask: Task<Void, Never>?
@@ -79,17 +84,18 @@ public final class SyntaxHighlighter {
             EditorMetrics.shared.recordHighlight(ContinuousClock.now - start, spans: spans.count)
             self.coveredRange = range
             self.apply(spans)
-            self.scheduleTreeRelease()
+            self.scheduleTreeRelease(sourceBytes: storage.utf16Count * 2)
         }
     }
 
-    /// Drops the engine's tree after `treeIdleTimeout` without another pass. The next edit reparses fully.
-    private func scheduleTreeRelease() {
+    /// Drops the engine's tree after `treeIdleTimeout` without another pass, or immediately for very large
+    /// sources. The next edit then reparses fully.
+    private func scheduleTreeRelease(sourceBytes: Int) {
         idleTask?.cancel()
-        let timeout = treeIdleTimeout
         let engine = engine
+        let timeout: Duration = sourceBytes > maxRetainedTreeSourceBytes ? .zero : treeIdleTimeout
         idleTask = Task {
-            try? await Task.sleep(for: timeout)
+            if timeout > .zero { try? await Task.sleep(for: timeout) }
             guard !Task.isCancelled else { return }
             await engine.reset()
         }

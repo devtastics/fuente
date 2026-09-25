@@ -52,6 +52,16 @@ extension TextView {
         if grouped { manager.endUndoGrouping() }
     }
 
+    /// Replaces the whole document with text from outside the editor (a reload from disk). Not undoable:
+    /// the undo stack belongs to the old contents and is cleared. The caret stays near where it was.
+    public func replaceAll(with text: String) {
+        typingRun = nil
+        composingRange = nil
+        let caret = selection.head
+        replace(0..<layoutManager.storage.utf16Count, with: text, selectionAfter: TextSelection(caret: min(caret, text.utf16.count)), registerUndo: false)
+        textUndoManager.removeAllActions()
+    }
+
     func didEdit(_ edit: TextEdit) {
         needsLayout = true
         needsDisplay = true

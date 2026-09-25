@@ -51,4 +51,47 @@ public final class Workspace {
     }
 
     public var hasUnsavedChanges: Bool { documents.contains { $0.isDirty } }
+
+    // MARK: - Watching the disk
+
+    private var watcher: DirectoryWatcher?
+
+    /// Folders whose listing changed, already refreshed. The navigator reloads these items.
+    public var onFoldersChanged: (([FileNode]) -> Void)?
+
+    /// Open documents whose file changed outside the editor.
+    public var onDocumentsChangedOnDisk: (([Document]) -> Void)?
+
+    /// Starts following the folder on disk. Safe to call more than once.
+    public func startWatching() {
+        guard watcher == nil else { return }
+        let watcher = DirectoryWatcher(rootURL: rootURL)
+        watcher.onChange = { [weak self] folders in self?.handleChanges(in: folders) }
+        watcher.start()
+        self.watcher = watcher
+    }
+
+    public func stopWatching() {
+        watcher?.stop()
+        watcher = nil
+    }
+
+    /// Refreshes the loaded nodes for `folders` and reports documents that changed on disk.
+    public func handleChanges(in folders: [URL]) {
+        var refreshed: [FileNode] = []
+        for folder in folders {
+            if let node = root.node(for: folder), node.refresh() {
+                refreshed.append(node)
+            }
+        }
+        if !refreshed.isEmpty { onFoldersChanged?(refreshed) }
+
+        // Compare paths: directory URLs differ in trailing slashes depending on how they were built.
+        let folderPaths = Set(folders.map(\.path))
+        let changedDocuments = documents.filter { document in
+            guard let url = document.url else { return false }
+            return folderPaths.contains(url.deletingLastPathComponent().path) && document.hasChangedOnDisk
+        }
+        if !changedDocuments.isEmpty { onDocumentsChangedOnDisk?(changedDocuments) }
+    }
 }

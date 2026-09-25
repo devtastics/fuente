@@ -40,6 +40,17 @@ final class NavigatorViewController: NSViewController, NSOutlineViewDataSource, 
         view = scrollView
     }
 
+    /// Redraws folders whose listing changed. Node identity is preserved by the model, so expansion survives.
+    func reload(_ nodes: [FileNode]) {
+        for node in nodes {
+            if node === workspace.root {
+                outlineView.reloadData()
+            } else {
+                outlineView.reloadItem(node, reloadChildren: true)
+            }
+        }
+    }
+
     /// Selects and reveals a file, expanding folders down to it.
     func reveal(_ url: URL) {
         guard let node = workspace.root.node(for: url) else { return }

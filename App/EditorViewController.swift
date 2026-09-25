@@ -41,9 +41,25 @@ final class EditorViewController: NSViewController, TextViewDelegate {
 
     var text: String { textView.layoutManager.storage.string }
 
+    private var isReloading = false
+
     func textViewDidChangeText(_ textView: TextView) {
+        guard !isReloading else { return }
         document.markDirty()
         onChange?(self)
+    }
+
+    /// Takes the file's new contents from disk. Only called when the editor has no unsaved changes.
+    func reloadFromDisk() {
+        do {
+            let text = try document.reloadFromDisk()
+            isReloading = true
+            textView.replaceAll(with: text)
+            isReloading = false
+            onChange?(self)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
     }
 
     /// Saves to the document's location, asking for one if it has none. False when cancelled or failed.

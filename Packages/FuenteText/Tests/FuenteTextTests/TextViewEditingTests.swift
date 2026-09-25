@@ -126,6 +126,17 @@ import Testing
         #expect(textView.pasteboard.string(forType: .string) == " def")
     }
 
+    @Test func replaceAllSwapsContentAndClearsUndo() {
+        let textView = view("old text here")
+        type("x", into: textView)
+        textView.selection = TextSelection(caret: 10)
+        textView.replaceAll(with: "new")
+        #expect(textView.layoutManager.storage.string == "new")
+        #expect(textView.selection == TextSelection(caret: 3))
+        textView.undo(nil)
+        #expect(textView.layoutManager.storage.string == "new")
+    }
+
     @Test func delegateIsNotifiedOnEveryChange() {
         let textView = view("")
         let recorder = Recorder()
