@@ -5,11 +5,11 @@ import AppKit
 extension TextView: @preconcurrency NSTextFinderClient {
     /// Installs the finder in the enclosing scroll view. Called once the view has a scroll view.
     func installTextFinder() {
-        guard let scrollView = enclosingScrollView, textFinder.client == nil else { return }
+        guard usesFindBar, let scrollView = enclosingScrollView, textFinder.client == nil else { return }
         textFinder.client = self
         textFinder.findBarContainer = scrollView
-        textFinder.isIncrementalSearchingEnabled = true
-        textFinder.incrementalSearchingShouldDimContentView = true
+        textFinder.isIncrementalSearchingEnabled = findBarIsIncremental
+        textFinder.incrementalSearchingShouldDimContentView = findBarIsIncremental
         scrollView.findBarPosition = .aboveContent
     }
 

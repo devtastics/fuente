@@ -15,11 +15,28 @@ public final class TextView: NSView {
     public var selection = TextSelection(caret: 0) {
         didSet {
             guard selection != oldValue else { return }
-            needsDisplay = true
+            invalidateForSelectionChange(from: oldValue)
             gutter?.needsDisplay = true
             scrollCaretToVisible()
-            restartBlink()
+            updateInsertionIndicator()
         }
+    }
+
+    /// Redraws only what a selection change can affect: both current-line bands, and selected text if any.
+    private func invalidateForSelectionChange(from old: TextSelection) {
+        if !old.isEmpty || !selection.isEmpty {
+            needsDisplay = true
+            return
+        }
+        for offset in [old.head, selection.head] {
+            let line = storage.line(at: min(offset, storage.utf16Count))
+            setNeedsDisplay(CGRect(x: 0, y: layoutManager.yOffset(ofLine: line), width: bounds.width, height: layoutManager.height(ofLine: line)))
+        }
+    }
+
+    private func updateInsertionIndicator() {
+        insertionIndicator.displayMode = isActive && selection.isEmpty ? .automatic : .hidden
+        insertionIndicator.frame = caretRect.insetBy(dx: -0.5, dy: 0)
     }
 
     /// The line-number ruler of the enclosing scroll view, if one is installed.
@@ -53,10 +70,8 @@ public final class TextView: NSView {
     /// Background of the line holding the caret. `nil` disables it.
     public var currentLineColor: NSColor? = NSColor.textColor.withAlphaComponent(0.05) { didSet { needsDisplay = true } }
 
-    /// Blink state: the caret is drawn only when true. Reset to visible on every selection change.
-    private var caretVisible = true
-    private var blinkTimer: Timer?
-    public var caretBlinkInterval: TimeInterval = 0.55
+    /// The system caret: a separate view that blinks on its own, so the text layer is never redrawn for it.
+    private let insertionIndicator = NSTextInsertionIndicator()
 
     public weak var delegate: TextViewDelegate?
 
@@ -74,6 +89,12 @@ public final class TextView: NSView {
     /// AppKit's find bar. Attached to the scroll view by `installTextFinder()`.
     let textFinder = NSTextFinder()
 
+    /// Whether to attach AppKit's find bar when the view enters a scroll view. Set before that happens.
+    public var usesFindBar = true
+
+    /// Incremental matching dims the document and highlights matches while typing in the find bar.
+    public var findBarIsIncremental = true
+
     /// Column to keep while moving vertically, so the caret does not drift on short lines.
     private var verticalMoveX: CGFloat?
 
@@ -82,6 +103,8 @@ public final class TextView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         textUndoManager.groupsByEvent = false
+        insertionIndicator.displayMode = .hidden
+        addSubview(insertionIndicator)
     }
 
     @available(*, unavailable)
@@ -92,37 +115,17 @@ public final class TextView: NSView {
     public override var acceptsFirstResponder: Bool { true }
 
     public override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
         needsDisplay = true
-        restartBlink()
-        return super.becomeFirstResponder()
+        DispatchQueue.main.async { [weak self] in self?.updateInsertionIndicator() }
+        return result
     }
 
     public override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
         needsDisplay = true
-        stopBlink()
-        return super.resignFirstResponder()
-    }
-
-    // MARK: - Caret blink
-
-    /// Shows the caret and starts the blink cycle over, so it never blinks away right after moving.
-    func restartBlink() {
-        stopBlink()
-        caretVisible = true
-        guard isActive, caretBlinkInterval > 0 else { return }
-        blinkTimer = Timer.scheduledTimer(withTimeInterval: caretBlinkInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.caretVisible.toggle()
-                self.setNeedsDisplay(self.caretRect.insetBy(dx: -1, dy: 0))
-            }
-        }
-    }
-
-    private func stopBlink() {
-        blinkTimer?.invalidate()
-        blinkTimer = nil
-        caretVisible = true
+        DispatchQueue.main.async { [weak self] in self?.updateInsertionIndicator() }
+        return result
     }
 
     private var isActive: Bool { window?.firstResponder === self }
@@ -165,6 +168,7 @@ public final class TextView: NSView {
         }
         EditorMetrics.signposter.endInterval("layout", state)
         EditorMetrics.shared.recordLayout(elapsed)
+        updateInsertionIndicator()
     }
 
     /// Grows the view to the document's current size so the scroll view knows how far to scroll.
@@ -245,7 +249,6 @@ public final class TextView: NSView {
         context.restoreGState()
 
         drawMarkedText()
-        drawCaret()
 
         // Typesetting real lines may have changed the document height; resize outside of draw.
         if layoutManager.contentHeight != heightBefore {
@@ -276,12 +279,6 @@ public final class TextView: NSView {
         for rect in layoutManager.selectionRects(for: composingRange, newlineWidth: 0) {
             CGRect(x: rect.minX + textInset, y: rect.maxY - 1.5, width: rect.width, height: 1).fill()
         }
-    }
-
-    private func drawCaret() {
-        guard isActive, selection.isEmpty, caretVisible else { return }
-        NSColor.textInsertionPointColor.setFill()
-        caretRect.fill()
     }
 
     // MARK: - Mouse
