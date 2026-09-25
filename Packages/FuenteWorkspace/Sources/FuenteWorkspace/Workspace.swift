@@ -52,6 +52,43 @@ public final class Workspace {
 
     public var hasUnsavedChanges: Bool { documents.contains { $0.isDirty } }
 
+    // MARK: - State
+
+    /// Path relative to the root, or `nil` for URLs outside the project.
+    public func relativePath(for url: URL) -> String? {
+        let path = url.standardizedFileURL.path
+        let root = rootURL.path + "/"
+        guard path.hasPrefix(root) else { return nil }
+        return String(path.dropFirst(root.count))
+    }
+
+    public func url(forRelativePath path: String) -> URL {
+        rootURL.appendingPathComponent(path)
+    }
+
+    /// The state to persist: open documents with a location, the active one, and the given folders.
+    public func state(expandedFolders: [URL]) -> WorkspaceState {
+        WorkspaceState(
+            openFiles: documents.compactMap { $0.url.flatMap(relativePath) },
+            activeFile: activeDocument?.url.flatMap(relativePath),
+            expandedFolders: expandedFolders.compactMap(relativePath)
+        )
+    }
+
+    /// Reopens the files of a saved state that still exist. Returns the folders to expand.
+    @discardableResult
+    public func restore(_ state: WorkspaceState) -> [URL] {
+        for path in state.openFiles {
+            let url = url(forRelativePath: path)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            _ = try? open(url)
+        }
+        if let active = state.activeFile.map(url(forRelativePath:)), let document = document(for: active) {
+            activate(document)
+        }
+        return state.expandedFolders.map(url(forRelativePath:))
+    }
+
     // MARK: - Watching the disk
 
     private var watcher: DirectoryWatcher?

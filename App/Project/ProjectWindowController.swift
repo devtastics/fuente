@@ -7,6 +7,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     private let navigator: NavigatorViewController
     private let editorArea = EditorAreaViewController()
     private let splitViewController = NSSplitViewController()
+    private let stateStore = WorkspaceStateStore.default
+    private var saveStateTask: Task<Void, Never>?
 
     init(workspace: Workspace) {
         self.workspace = workspace
@@ -54,6 +56,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
             }
         }
         workspace.startWatching()
+        navigator.onExpansionChange = { [weak self] in self?.scheduleStateSave() }
+        restoreState()
         editorArea.tabBar.onSelect = { [weak self] document in self?.activate(document) }
         editorArea.tabBar.onClose = { [weak self] document in self?.close(document) }
     }
@@ -68,6 +72,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
             editorArea.show(document, in: workspace)
             navigator.reveal(url)
             updateTitle()
+            scheduleStateSave()
         } catch {
             NSAlert(error: error).runModal()
         }
@@ -78,6 +83,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         editorArea.show(document, in: workspace)
         if let url = document.url { navigator.reveal(url) }
         updateTitle()
+        scheduleStateSave()
     }
 
     /// Closes a tab, asking about unsaved changes first.
@@ -94,6 +100,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         editorArea.show(workspace.activeDocument, in: workspace)
         if let url = workspace.activeDocument?.url { navigator.reveal(url) }
         updateTitle()
+        scheduleStateSave()
     }
 
     @objc func closeTab(_ sender: Any?) {
@@ -126,6 +133,32 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         editorArea.activeEditor?.save()
     }
 
+    // MARK: - Remembered state
+
+    private func restoreState() {
+        guard let state = stateStore.load(for: workspace.rootURL) else { return }
+        let folders = workspace.restore(state)
+        navigator.expand(folders)
+        editorArea.show(workspace.activeDocument, in: workspace)
+        if let url = workspace.activeDocument?.url { navigator.reveal(url) }
+        updateTitle()
+    }
+
+    /// Saves half a second after the last change, so a burst of changes writes once and a crash loses little.
+    private func scheduleStateSave() {
+        saveStateTask?.cancel()
+        saveStateTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.saveState()
+        }
+    }
+
+    private func saveState() {
+        let state = workspace.state(expandedFolders: navigator.expandedFolders)
+        try? stateStore.save(state, for: workspace.rootURL)
+    }
+
     // MARK: - Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -137,6 +170,12 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     // MARK: - Closing
+
+    func windowWillClose(_ notification: Notification) {
+        saveStateTask?.cancel()
+        saveState()
+        workspace.stopWatching()
+    }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         let dirty = workspace.documents.filter(\.isDirty)

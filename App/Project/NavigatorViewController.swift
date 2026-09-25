@@ -7,8 +7,40 @@ final class NavigatorViewController: NSViewController, NSOutlineViewDataSource, 
     private let workspace: Workspace
     private let outlineView = NSOutlineView()
 
+    /// True while code, not the user, changes expansion or selection: row shifts must not open files.
+    private var isAdjusting = false
+
     /// Called when the user selects a file (not a folder).
     var onSelectFile: ((URL) -> Void)?
+
+    /// Called when a folder is expanded or collapsed.
+    var onExpansionChange: (() -> Void)?
+
+    /// Folders currently expanded, deepest last, from the loaded part of the tree.
+    var expandedFolders: [URL] {
+        var result: [URL] = []
+        func walk(_ node: FileNode) {
+            for child in node.children where child.isDirectory && outlineView.isItemExpanded(child) {
+                result.append(child.url)
+                walk(child)
+            }
+        }
+        walk(workspace.root)
+        return result
+    }
+
+    /// Expands folders in order, so parents come before their children.
+    func expand(_ folders: [URL]) {
+        isAdjusting = true
+        defer { isAdjusting = false }
+        for url in folders {
+            guard let node = workspace.root.node(for: url), node.isDirectory else { continue }
+            outlineView.expandItem(node)
+        }
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) { onExpansionChange?() }
+    func outlineViewItemDidCollapse(_ notification: Notification) { onExpansionChange?() }
 
     init(workspace: Workspace) {
         self.workspace = workspace
@@ -54,6 +86,8 @@ final class NavigatorViewController: NSViewController, NSOutlineViewDataSource, 
     /// Selects and reveals a file, expanding folders down to it.
     func reveal(_ url: URL) {
         guard let node = workspace.root.node(for: url) else { return }
+        isAdjusting = true
+        defer { isAdjusting = false }
         var ancestors: [FileNode] = []
         var current = node.parent
         while let ancestor = current, ancestor !== workspace.root {
@@ -123,7 +157,7 @@ final class NavigatorViewController: NSViewController, NSOutlineViewDataSource, 
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard let node = outlineView.item(atRow: outlineView.selectedRow) as? FileNode, !node.isDirectory else { return }
+        guard !isAdjusting, let node = outlineView.item(atRow: outlineView.selectedRow) as? FileNode, !node.isDirectory else { return }
         onSelectFile?(node.url)
     }
 
