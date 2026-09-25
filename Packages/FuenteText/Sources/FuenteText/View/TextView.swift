@@ -27,7 +27,7 @@ public final class TextView: NSView {
     /// Redraws only what a selection change can affect: both current-line bands, and selected text if any.
     private func invalidateForSelectionChange(from old: TextSelection) {
         if !old.isEmpty || !selection.isEmpty {
-            needsDisplay = true
+            invalidateVisible()
             return
         }
         for offset in [old.head, selection.head] {
@@ -60,8 +60,8 @@ public final class TextView: NSView {
         didSet { needsLayout = true }
     }
 
-    public var textColor: NSColor = .textColor { didSet { needsDisplay = true } }
-    public var backgroundColor: NSColor = .textBackgroundColor { didSet { needsDisplay = true } }
+    public var textColor: NSColor = .textColor { didSet { invalidateVisible() } }
+    public var backgroundColor: NSColor = .textBackgroundColor { didSet { invalidateVisible() } }
 
     /// Horizontal inset before the first glyph of every line.
     public var textInset: CGFloat = 8 { didSet { needsLayout = true } }
@@ -70,7 +70,7 @@ public final class TextView: NSView {
     public var indentation: Indentation = .spaces(4)
 
     /// Background of the line holding the caret. `nil` disables it.
-    public var currentLineColor: NSColor? = NSColor.textColor.withAlphaComponent(0.05) { didSet { needsDisplay = true } }
+    public var currentLineColor: NSColor? = NSColor.textColor.withAlphaComponent(0.05) { didSet { invalidateVisible() } }
 
     /// The system caret: a separate view that blinks on its own, so the text layer is never redrawn for it.
     private let insertionIndicator = NSTextInsertionIndicator()
@@ -81,7 +81,7 @@ public final class TextView: NSView {
     public var pasteboard: NSPasteboard = .general
 
     /// Text being composed by an input method or dead key, shown underlined until committed.
-    var composingRange: Range<Int>? { didSet { needsDisplay = true } }
+    var composingRange: Range<Int>? { didSet { invalidateVisible() } }
 
     /// Current run of contiguous typing for undo coalescing. `nil` when the run is broken.
     var typingRun: TypingRun?
@@ -118,19 +118,28 @@ public final class TextView: NSView {
 
     public override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
-        needsDisplay = true
+        invalidateVisible()
         DispatchQueue.main.async { [weak self] in self?.updateInsertionIndicator() }
         return result
     }
 
     public override func resignFirstResponder() -> Bool {
         let result = super.resignFirstResponder()
-        needsDisplay = true
+        invalidateVisible()
         DispatchQueue.main.async { [weak self] in self?.updateInsertionIndicator() }
         return result
     }
 
     private var isActive: Bool { window?.firstResponder === self }
+
+    // MARK: - Invalidation
+
+    /// Marks only what is on screen for redraw. Marking the whole view is what NSView's `needsDisplay`
+    /// does, and on a document view a million points tall it makes CoreAnimation prepare tiles for the
+    /// entire layer: about 100 MB of transient graphics memory per redraw. Nothing off screen needs drawing.
+    func invalidateVisible() {
+        setNeedsDisplay(visibleRect)
+    }
 
     // MARK: - Sizing
 
@@ -157,12 +166,14 @@ public final class TextView: NSView {
     }
 
     @objc private func clipViewBoundsChanged() {
+        EditorMetrics.trace("clip bounds changed -> \(Int(visibleRect.minY))..\(Int(visibleRect.maxY)) w=\(Int(availableWidth))")
         needsLayout = true
     }
 
     public override func layout() {
         super.layout()
         let state = EditorMetrics.signposter.beginInterval("layout")
+        EditorMetrics.trace("layout availableWidth=\(Int(availableWidth)) frameH=\(Int(frame.height)) contentH=\(Int(layoutManager.contentHeight))")
         let clock = ContinuousClock()
         let elapsed = clock.measure {
             layoutManager.wrapWidth = wrapsLines ? max(0, availableWidth - textInset * 2) : nil
@@ -180,7 +191,7 @@ public final class TextView: NSView {
         let size = CGSize(width: width, height: height)
         if size != frame.size {
             setFrameSize(size)
-            needsDisplay = true
+            invalidateVisible()
         }
     }
 
@@ -188,15 +199,16 @@ public final class TextView: NSView {
 
     /// Applies highlight colors. Metrics are untouched, so this never scrolls or reflows.
     public func setStyles(_ styles: [StyledRange]) {
+        EditorMetrics.trace("setStyles count=\(styles.count)")
         layoutManager.setStyles(styles)
-        needsDisplay = true
+        invalidateVisible()
     }
 
     /// Dynamic colors resolve at typesetting time, so glyph runs must be rebuilt when the appearance flips.
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         layoutManager.invalidateLayoutsKeepingHeights()
-        needsDisplay = true
+        invalidateVisible()
     }
 
     // MARK: - Geometry
@@ -221,6 +233,7 @@ public final class TextView: NSView {
     public override func draw(_ dirtyRect: NSRect) {
         let state = EditorMetrics.signposter.beginInterval("draw")
         let start = ContinuousClock.now
+        EditorMetrics.trace("draw dirty=\(Int(dirtyRect.minY))..\(Int(dirtyRect.maxY)) visible=\(Int(visibleRect.minY))..\(Int(visibleRect.maxY)) frameH=\(Int(frame.height))")
         defer {
             EditorMetrics.signposter.endInterval("draw", state)
             EditorMetrics.shared.recordDraw(ContinuousClock.now - start)

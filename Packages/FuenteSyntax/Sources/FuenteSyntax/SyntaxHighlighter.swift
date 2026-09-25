@@ -54,6 +54,7 @@ public final class SyntaxHighlighter {
     }
 
     @objc private func textDidChange(_ notification: Notification) {
+        EditorMetrics.trace("highlight trigger: text change")
         if let edit = notification.userInfo?[TextView.editUserInfoKey] as? TextEdit {
             pendingEdits.append(edit)
         } else {
@@ -68,12 +69,14 @@ public final class SyntaxHighlighter {
     @objc private func didScroll(_ notification: Notification) {
         let visible = textView.visibleCharacterRange()
         if visible.lowerBound < coveredRange.lowerBound || visible.upperBound > coveredRange.upperBound {
+            EditorMetrics.trace("highlight trigger: scroll visible=\(visible) covered=\(coveredRange)")
             highlight()
         }
     }
 
     /// Cancels any pending pass and starts one for the current text and viewport. Results land back on the main actor.
     public func highlight() {
+        EditorMetrics.trace("highlight pass scheduled")
         task?.cancel()
         idleTask?.cancel()
         // The storage is a value: the actor shares its buffer copy-on-write and reads it in place.

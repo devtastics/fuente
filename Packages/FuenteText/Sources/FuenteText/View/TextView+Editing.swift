@@ -64,7 +64,7 @@ extension TextView {
 
     func didEdit(_ edit: TextEdit) {
         needsLayout = true
-        needsDisplay = true
+        invalidateVisible()
         gutter?.updateThickness()
         delegate?.textViewDidChangeText(self)
         NotificationCenter.default.post(
@@ -198,7 +198,7 @@ extension TextView: @preconcurrency NSTextInputClient {
 
     public func unmarkText() {
         composingRange = nil
-        needsDisplay = true
+        invalidateVisible()
     }
 
     public func selectedRange() -> NSRange { NSRange(selection.range) }

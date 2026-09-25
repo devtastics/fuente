@@ -71,8 +71,8 @@ final class PerformanceHUD: NSWindowController {
                     \(format(bytes: memory.resident)) resident
         CPU         \(String(format: "%5.1f", cpuPercent)) %
 
-        Draw        \(format(metrics.lastDrawDuration))
-        Layout      \(format(metrics.lastLayoutDuration))
+        Draw        \(format(metrics.lastDrawDuration))  #\(metrics.drawCount)
+        Layout      \(format(metrics.lastLayoutDuration))  #\(metrics.layoutCount)
         Edit        \(format(metrics.lastEditDuration))
         Highlight   \(format(metrics.lastHighlightDuration))  \(metrics.lastHighlightSpanCount) spans
         Lines       \(metrics.typesetLineCount) typeset / \(metrics.totalLineCount)

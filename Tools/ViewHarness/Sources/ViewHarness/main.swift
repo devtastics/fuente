@@ -34,9 +34,18 @@ if flag("empty") {
     scrollView.documentView = textView
     if flag("gutter") { textView.installGutter() }
     if flag("php") { highlighter = SyntaxHighlighter(textView: textView, language: Languages.php, theme: .system) }
+    // Experiments: a second draw half a second in, invalidating everything or only what is visible.
+    if flag("redraw-all") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { textView.needsDisplay = true } }
+    if flag("redraw-visible") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { textView.setNeedsDisplay(textView.visibleRect) } }
     window.contentView = scrollView
 }
 
 window.makeKeyAndOrderFront(nil)
-DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { app.terminate(nil) }
+let launch = ContinuousClock.now
+@MainActor func report(_ label: String) {
+    let m = EditorMetrics.shared
+    print("HARNESS \(label): draws=\(m.drawCount) layouts=\(m.layoutCount) highlight=\(m.lastHighlightDuration) typeset=\(m.typesetLineCount)/\(m.totalLineCount)")
+}
+DispatchQueue.main.asyncAfter(deadline: .now() + 1) { report("1 s") }
+DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { report("\(seconds) s"); app.terminate(nil) }
 app.run()

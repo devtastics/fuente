@@ -10,6 +10,10 @@ public final class EditorMetrics {
 
     public private(set) var lastDrawDuration: Duration = .zero
     public private(set) var lastLayoutDuration: Duration = .zero
+
+    /// How many times any text view drew or laid out since launch. Bursts here mean redraw storms.
+    public private(set) var drawCount = 0
+    public private(set) var layoutCount = 0
     public private(set) var lastEditDuration: Duration = .zero
     public private(set) var lastHighlightDuration: Duration = .zero
     public private(set) var lastHighlightSpanCount = 0
@@ -20,8 +24,19 @@ public final class EditorMetrics {
 
     private init() {}
 
-    func recordDraw(_ duration: Duration) { lastDrawDuration = duration }
-    func recordLayout(_ duration: Duration) { lastLayoutDuration = duration }
+    /// Set FUENTE_TRACE=1 in the environment to log engine events to the unified log
+    /// (`log show --predicate 'subsystem == "com.devtastics.fuente"' --last 1m`).
+    public static let tracing = ProcessInfo.processInfo.environment["FUENTE_TRACE"] != nil
+    private static let logger = Logger(subsystem: "com.devtastics.fuente", category: "trace")
+
+    public static func trace(_ message: @autoclosure () -> String) {
+        guard tracing else { return }
+        let text = message()
+        logger.notice("\(text, privacy: .public)")
+    }
+
+    func recordDraw(_ duration: Duration) { lastDrawDuration = duration; drawCount += 1 }
+    func recordLayout(_ duration: Duration) { lastLayoutDuration = duration; layoutCount += 1 }
     func recordEdit(_ duration: Duration) { lastEditDuration = duration }
     func recordLines(typeset: Int, total: Int) {
         typesetLineCount = typeset
