@@ -36,3 +36,19 @@ import Testing
         #expect(buffer.count == 0)
     }
 }
+
+@Suite struct GapBufferSegmentTests {
+    @Test func segmentsCoverTheTextAroundTheGap() {
+        var storage = TextStorage("hello world")
+        storage.replace(5..<5, with: ",")            // gap now sits after the comma
+        storage.withUTF16Segments { prefix, suffix in
+            #expect(String(decoding: Array(prefix), as: UTF16.self) == "hello,")
+            #expect(String(decoding: Array(suffix), as: UTF16.self) == " world")
+            #expect(prefix.count + suffix.count == storage.utf16Count)
+        }
+        let fresh = TextStorage(utf16Units: Array("abc".utf16))
+        fresh.withUTF16Segments { prefix, suffix in
+            #expect(prefix.count + suffix.count == 3)
+        }
+    }
+}

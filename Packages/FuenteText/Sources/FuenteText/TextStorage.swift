@@ -10,9 +10,18 @@ public struct TextStorage: Sendable {
     public private(set) var lineStarts: [Int]
 
     public init(_ string: String = "") {
-        let units = Array(string.utf16)
+        self.init(utf16Units: Array(string.utf16))
+    }
+
+    public init(utf16Units units: [UInt16]) {
         buffer = GapBuffer(units)
         lineStarts = TextStorage.lineStarts(in: units, base: 0)
+    }
+
+    /// The text as two contiguous UTF-16 runs (before and after the edit gap), valid only inside `body`.
+    /// Lets parsers read the document in place instead of copying it.
+    public func withUTF16Segments<R>(_ body: (UnsafeBufferPointer<UInt16>, UnsafeBufferPointer<UInt16>) throws -> R) rethrows -> R {
+        try buffer.withSegments(body)
     }
 
     /// The whole document as a String. Linear in the document size; prefer ranged access in hot paths.

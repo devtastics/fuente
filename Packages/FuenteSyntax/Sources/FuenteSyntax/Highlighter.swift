@@ -43,7 +43,8 @@ public actor HighlightEngine {
         return (String(cString: ts_node_string(tree.rootNode.raw)), out)
     }
 
-    /// Forgets the previous tree. The next call parses from scratch.
+    /// Forgets the previous tree. The next call parses from scratch. A tree costs roughly 60 bytes per
+    /// byte of dense source, so owners release it once typing stops.
     public func reset() {
         tree = nil
         parsedCount = -1
@@ -54,16 +55,20 @@ public actor HighlightEngine {
     /// Spans in document order. Where several patterns capture the same range, the first pattern in
     /// the query wins, matching tree-sitter's own highlighter. Nested spans follow their containers.
     public func highlights(for text: String) -> [HighlightSpan] {
-        highlights(for: Array(text.utf16))
+        highlights(for: TextStorage(text))
     }
 
-    /// Same, from UTF-16 code units: what `TextStorage` holds and what tree-sitter parses natively.
-    /// With `range`, only captures intersecting it are returned. `edits` are the changes since the previous
-    /// call, in order; with them the parse is incremental, without them and with an unchanged length the
-    /// previous tree is reused as is.
+    /// Same, from UTF-16 code units.
     public func highlights(for units: [UInt16], in range: Range<Int>? = nil, edits: [TextEdit] = []) -> [HighlightSpan] {
+        highlights(for: TextStorage(utf16Units: units), in: range, edits: edits)
+    }
+
+    /// The main entry point: reads the storage in place, no copy. With `range`, only captures intersecting
+    /// it are returned. `edits` are the changes since the previous call, in order; with them the parse is
+    /// incremental, without them and with an unchanged length the previous tree is reused as is.
+    public func highlights(for storage: TextStorage, in range: Range<Int>? = nil, edits: [TextEdit] = []) -> [HighlightSpan] {
         let parseState = Self.signposter.beginInterval("parse")
-        let tree = parse(units, edits: edits)
+        let tree = parse(storage, edits: edits)
         Self.signposter.endInterval("parse", parseState)
         guard let tree else { return [] }
 
@@ -76,8 +81,7 @@ public actor HighlightEngine {
         while let match = cursor.nextMatch() {
             let text: (Int) -> String? = { captureIndex in
                 guard let capture = match.captures.first(where: { $0.index == captureIndex }) else { return nil }
-                let range = capture.node.utf16Range
-                return String(utf16CodeUnits: Array(units[range]), count: range.count)
+                return storage.substring(capture.node.utf16Range)
             }
             guard query.predicates[match.patternIndex].allSatisfy({ $0.evaluate(text: text) }) else { continue }
             for capture in match.captures {
@@ -90,20 +94,20 @@ public actor HighlightEngine {
         return resolve(raw)
     }
 
-    private func parse(_ units: [UInt16], edits: [TextEdit]) -> Tree? {
+    private func parse(_ storage: TextStorage, edits: [TextEdit]) -> Tree? {
         if let old = tree {
-            if edits.isEmpty, parsedCount == units.count {
+            if edits.isEmpty, parsedCount == storage.utf16Count {
                 return old
             }
             if !edits.isEmpty {
                 edits.forEach(old.edit)
-                tree = parser.parse(units, oldTree: old)
-                parsedCount = units.count
+                tree = parser.parse(storage, oldTree: old)
+                parsedCount = storage.utf16Count
                 return tree
             }
         }
-        tree = parser.parse(units)
-        parsedCount = units.count
+        tree = parser.parse(storage)
+        parsedCount = storage.utf16Count
         return tree
     }
 

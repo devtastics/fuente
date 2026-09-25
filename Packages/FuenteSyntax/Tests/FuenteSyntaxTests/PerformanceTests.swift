@@ -62,13 +62,13 @@ struct PerformanceTests {
         var storage = TextStorage(Self.bigSource)
         let edit = storage.replace(520_000..<520_000, with: "x")
         var typed: [HighlightSpan] = []
-        let incremental = await clock.measure { typed = await engine.highlights(for: storage.utf16Units, in: 500_000..<540_000, edits: [edit]) }
+        let incremental = await clock.measure { typed = await engine.highlights(for: storage, in: 500_000..<540_000, edits: [edit]) }
         print("PERF one keystroke in 1 MB PHP (incremental + window): \(incremental), spans: \(typed.count)")
         #expect(!typed.isEmpty)
         #expect(incremental < .milliseconds(100))
 
         // Scrolling: no edits, same text, another window. No parse at all.
-        let scrolled = await clock.measure { typed = await engine.highlights(for: storage.utf16Units, in: 100_000..<140_000) }
+        let scrolled = await clock.measure { typed = await engine.highlights(for: storage, in: 100_000..<140_000) }
         print("PERF scroll to a new window, unchanged text: \(scrolled), spans: \(typed.count)")
         #expect(scrolled < .milliseconds(50))
     }

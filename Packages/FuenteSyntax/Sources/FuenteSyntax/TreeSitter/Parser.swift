@@ -24,6 +24,53 @@ final class Parser {
         }
         return raw.map(Tree.init)
     }
+
+    /// Parses a `TextStorage` in place: tree-sitter reads the two runs of the gap buffer through a callback,
+    /// so nothing is copied. `oldTree` must have been edited to match; pass `nil` for a full parse.
+    func parse(_ storage: TextStorage, oldTree: Tree? = nil) -> Tree? {
+        storage.withUTF16Segments { prefix, suffix in
+            var segments = Segments(
+                prefix: UnsafeRawPointer(prefix.baseAddress), prefixBytes: prefix.count * 2,
+                suffix: UnsafeRawPointer(suffix.baseAddress), suffixBytes: suffix.count * 2
+            )
+            return withUnsafeMutablePointer(to: &segments) { payload -> Tree? in
+                let input = TSInput(payload: payload, read: readSegments, encoding: TSInputEncodingUTF16LE, decode: nil)
+                return ts_parser_parse(pointer, oldTree?.pointer, input).map(Tree.init)
+            }
+        }
+    }
+}
+
+/// Two contiguous byte runs handed to tree-sitter's read callback.
+private struct Segments {
+    var prefix: UnsafeRawPointer?
+    var prefixBytes: Int
+    var suffix: UnsafeRawPointer?
+    var suffixBytes: Int
+}
+
+nonisolated(unsafe) private let emptyChunk: UnsafePointer<CChar> = {
+    let pointer = UnsafeMutablePointer<CChar>.allocate(capacity: 2)
+    pointer.initialize(repeating: 0, count: 2)
+    return UnsafePointer(pointer)
+}()
+
+/// tree-sitter asks for the text from `byteIndex` on; we answer with the rest of whichever run contains it.
+private let readSegments: @convention(c) (UnsafeMutableRawPointer?, UInt32, TSPoint, UnsafeMutablePointer<UInt32>?) -> UnsafePointer<CChar>? = { payload, byteIndex, _, bytesRead in
+    guard let payload, let bytesRead else { return nil }
+    let segments = payload.assumingMemoryBound(to: Segments.self).pointee
+    let index = Int(byteIndex)
+    if index < segments.prefixBytes, let prefix = segments.prefix {
+        bytesRead.pointee = UInt32(segments.prefixBytes - index)
+        return prefix.advanced(by: index).assumingMemoryBound(to: CChar.self)
+    }
+    let suffixIndex = index - segments.prefixBytes
+    if suffixIndex >= 0, suffixIndex < segments.suffixBytes, let suffix = segments.suffix {
+        bytesRead.pointee = UInt32(segments.suffixBytes - suffixIndex)
+        return suffix.advanced(by: suffixIndex).assumingMemoryBound(to: CChar.self)
+    }
+    bytesRead.pointee = 0
+    return emptyChunk
 }
 
 /// Owns a `TSTree`.

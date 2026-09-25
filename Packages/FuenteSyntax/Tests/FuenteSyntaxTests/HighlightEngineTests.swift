@@ -139,6 +139,25 @@ import Testing
         #expect((first + second).count == (await engine.highlights(for: units)).count)
     }
 
+    @Test func storageAndUnitsAgreeAndGapPositionDoesNotMatter() async {
+        var storage = TextStorage("<?php\nfunction foo($bar) { return $bar; }")
+        storage.replace(20..<20, with: "")             // move the gap into the middle without changing text
+        let viaStorage = await HighlightEngine(language: Languages.php).highlights(for: storage)
+        let viaUnits = await HighlightEngine(language: Languages.php).highlights(for: storage.utf16Units)
+        #expect(viaStorage == viaUnits)
+        #expect(!viaStorage.isEmpty)
+    }
+
+    @Test func resetForcesAFullParseThatStillMatches() async {
+        let engine = HighlightEngine(language: Languages.php)
+        var storage = TextStorage("<?php $a = 1;")
+        _ = await engine.highlights(for: storage)
+        await engine.reset()
+        storage.replace(6..<6, with: "$b = 2; ")      // edited, but no edit record handed over
+        let spans = await engine.highlights(for: storage)  // length changed: must reparse from scratch
+        #expect(spans == (await HighlightEngine(language: Languages.php).highlights(for: storage)))
+    }
+
     @Test func emptyDocumentHasNoSpans() async {
         #expect(await spans("").isEmpty)
     }

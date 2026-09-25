@@ -38,6 +38,9 @@ public final class TextLayoutManager {
     public private(set) var contentWidth: CGFloat = 0
 
     private var layouts: [[LineFragment]?]
+
+    /// Height of every line: real once typeset, estimated before. Source of truth for `heights`.
+    private var lineHeights: [CGFloat]
     private var heights: PrefixSumTree
 
     /// Lines currently holding glyph runs; the rest sit on estimated heights.
@@ -53,8 +56,9 @@ public final class TextLayoutManager {
         self.typesetter = typesetter
         self.wrapWidth = wrapWidth
         self.layouts = Array(repeating: nil, count: storage.lineCount)
+        self.lineHeights = []
         self.heights = PrefixSumTree([])
-        rebuildHeights()
+        resetHeights()
     }
 
     public var lineCount: Int { storage.lineCount }
@@ -153,7 +157,8 @@ public final class TextLayoutManager {
         if let existing = layouts[line] { return existing }
         let fragments = typesetter.typeset(storage.lineContent(line), styles: styles(in: storage.lineRange(line)), width: wrapWidth)
         let height = fragments.reduce(0) { $0 + $1.height }
-        heights.add(height - self.height(ofLine: line), at: line)
+        heights.add(height - lineHeights[line], at: line)
+        lineHeights[line] = height
         contentWidth = max(contentWidth, fragments.map(\.width).max() ?? 0)
         layouts[line] = fragments
         typesetLineCount += 1
@@ -236,9 +241,10 @@ public final class TextLayoutManager {
         if replacement.count == lastOldLine - firstLine + 1 {
             for line in firstLine...lastOldLine { invalidate(line) }
         } else {
+            for line in firstLine...lastOldLine where layouts[line] != nil { typesetLineCount -= 1 }
             layouts.replaceSubrange(firstLine...lastOldLine, with: replacement)
-            typesetLineCount = layouts.lazy.filter { $0 != nil }.count
-            rebuildHeights()
+            lineHeights.replaceSubrange(firstLine...lastOldLine, with: repeatElement(estimatedLineHeight, count: replacement.count))
+            heights = PrefixSumTree(lineHeights)
         }
         return edit
     }
@@ -247,21 +253,21 @@ public final class TextLayoutManager {
         guard layouts[line] != nil else { return }
         layouts[line] = nil
         typesetLineCount -= 1
-        heights.add(estimatedLineHeight - height(ofLine: line), at: line)
+        let estimate = estimatedLineHeight
+        heights.add(estimate - lineHeights[line], at: line)
+        lineHeights[line] = estimate
     }
 
     private func invalidateAllLines() {
         layouts = Array(repeating: nil, count: storage.lineCount)
         typesetLineCount = 0
         contentWidth = 0
-        rebuildHeights()
+        resetHeights()
     }
 
-    /// Rebuilds the height tree from cached layouts, using the estimate for lines without one.
-    private func rebuildHeights() {
-        let estimate = estimatedLineHeight
-        heights = PrefixSumTree(layouts.map { fragments in
-            fragments.map { $0.reduce(0) { $0 + $1.height } } ?? estimate
-        })
+    /// Every line back to the estimated height.
+    private func resetHeights() {
+        lineHeights = Array(repeating: estimatedLineHeight, count: storage.lineCount)
+        heights = PrefixSumTree(lineHeights)
     }
 }

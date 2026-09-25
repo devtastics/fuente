@@ -15,8 +15,13 @@ public final class SyntaxHighlighter {
     /// Lines colored above and below the visible ones. Two screens' worth on a typical window.
     public var marginLines = 200
 
+    /// How long after the last pass the syntax tree is kept for incremental parsing. Trees are large
+    /// (hundreds of MB for a multi-megabyte file), so they live only while typing is likely to continue.
+    public var treeIdleTimeout: Duration = .seconds(4)
+
     private let engine: HighlightEngine
     private var task: Task<Void, Never>?
+    private var idleTask: Task<Void, Never>?
     private var coveredRange: Range<Int> = 0..<0
 
     /// Edits not yet handed to the engine. Every text change appends here; every pass drains it.
@@ -60,18 +65,33 @@ public final class SyntaxHighlighter {
     /// Cancels any pending pass and starts one for the current text and viewport. Results land back on the main actor.
     public func highlight() {
         task?.cancel()
-        let units = textView.layoutManager.storage.utf16Units
+        idleTask?.cancel()
+        // The storage is a value: the actor shares its buffer copy-on-write and reads it in place.
+        let storage = textView.layoutManager.storage
         let range = textView.visibleCharacterRange(marginLines: marginLines)
         let edits = pendingEdits
         pendingEdits.removeAll()
         let engine = engine
         task = Task { [weak self] in
             let start = ContinuousClock.now
-            let spans = await engine.highlights(for: units, in: range, edits: edits)
+            let spans = await engine.highlights(for: storage, in: range, edits: edits)
             guard !Task.isCancelled, let self else { return }
             EditorMetrics.shared.recordHighlight(ContinuousClock.now - start, spans: spans.count)
             self.coveredRange = range
             self.apply(spans)
+            self.scheduleTreeRelease()
+        }
+    }
+
+    /// Drops the engine's tree after `treeIdleTimeout` without another pass. The next edit reparses fully.
+    private func scheduleTreeRelease() {
+        idleTask?.cancel()
+        let timeout = treeIdleTimeout
+        let engine = engine
+        idleTask = Task {
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            await engine.reset()
         }
     }
 

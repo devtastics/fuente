@@ -37,6 +37,15 @@ struct GapBuffer: Sendable {
 
     var all: [UInt16] { copy(0..<count) }
 
+    /// The text as two contiguous runs, before and after the gap. Valid only inside `body`.
+    func withSegments<R>(_ body: (UnsafeBufferPointer<UInt16>, UnsafeBufferPointer<UInt16>) throws -> R) rethrows -> R {
+        try units.withUnsafeBufferPointer { buffer in
+            let prefix = UnsafeBufferPointer(rebasing: buffer[0..<gapStart])
+            let suffix = UnsafeBufferPointer(rebasing: buffer[gapEnd..<buffer.count])
+            return try body(prefix, suffix)
+        }
+    }
+
     mutating func replace(_ range: Range<Int>, with new: [UInt16]) {
         moveGap(to: range.lowerBound)
         gapEnd += range.count // deleted units become part of the gap
