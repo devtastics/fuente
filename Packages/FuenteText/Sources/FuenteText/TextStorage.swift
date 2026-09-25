@@ -1,20 +1,29 @@
 import Foundation
 
-/// The document model of the text engine: a string plus the line boundaries needed for layout.
+/// The document model of the text engine: UTF-16 code units in a gap buffer, plus the line starts layout needs.
 ///
 /// Offsets and ranges are UTF-16, matching AppKit and CoreText. Lines are split on `\n` only.
 public struct TextStorage: Sendable {
-    public private(set) var string: String
+    private var buffer: GapBuffer
 
     /// UTF-16 offsets where each line starts. Always contains `0` and is strictly increasing.
     public private(set) var lineStarts: [Int]
 
     public init(_ string: String = "") {
-        self.string = string
-        self.lineStarts = TextStorage.lineStarts(in: string, base: 0)
+        let units = Array(string.utf16)
+        buffer = GapBuffer(units)
+        lineStarts = TextStorage.lineStarts(in: units, base: 0)
     }
 
-    public var utf16Count: Int { string.utf16.count }
+    /// The whole document as a String. Linear in the document size; prefer ranged access in hot paths.
+    public var string: String {
+        String(decoding: buffer.all, as: UTF16.self)
+    }
+
+    /// The whole document as UTF-16 code units, contiguous. What tree-sitter and CoreText consume.
+    public var utf16Units: [UInt16] { buffer.all }
+
+    public var utf16Count: Int { buffer.count }
 
     public var lineCount: Int { lineStarts.count }
 
@@ -37,47 +46,46 @@ public struct TextStorage: Sendable {
 
     /// The text of a line, excluding its trailing newline.
     public func lineContent(_ line: Int) -> String {
-        String(substring(lineRange(line)))
+        substring(lineRange(line))
     }
 
-    public func substring(_ range: Range<Int>) -> Substring {
-        let utf16 = string.utf16
-        let start = utf16.index(utf16.startIndex, offsetBy: range.lowerBound)
-        let end = utf16.index(start, offsetBy: range.count)
-        return string[start..<end]
+    public func substring(_ range: Range<Int>) -> String {
+        String(decoding: buffer.copy(range), as: UTF16.self)
     }
 
     /// Offset of the next grapheme cluster boundary, or `offset` itself at the end of the document.
     public func offset(after offset: Int) -> Int {
-        let utf16 = string.utf16
-        let index = utf16.index(utf16.startIndex, offsetBy: offset)
-        guard index < string.endIndex else { return offset }
-        return utf16.distance(from: utf16.startIndex, to: string.index(after: index))
+        guard offset < utf16Count else { return offset }
+        let range = lineRange(line(at: offset))
+        guard offset < range.upperBound else { return offset + 1 } // step over the newline
+        let content = substring(range)
+        let index = content.utf16.index(content.utf16.startIndex, offsetBy: offset - range.lowerBound)
+        return range.lowerBound + content.utf16.distance(from: content.utf16.startIndex, to: content.index(after: index))
     }
 
     /// Offset of the previous grapheme cluster boundary, or `0` at the start of the document.
     public func offset(before offset: Int) -> Int {
         guard offset > 0 else { return 0 }
-        let utf16 = string.utf16
-        let index = utf16.index(utf16.startIndex, offsetBy: offset)
-        return utf16.distance(from: utf16.startIndex, to: string.index(before: index))
+        let range = lineRange(line(at: offset))
+        guard offset > range.lowerBound else { return offset - 1 } // step over the newline
+        let content = substring(range)
+        let index = content.utf16.index(content.utf16.startIndex, offsetBy: offset - range.lowerBound)
+        return range.lowerBound + content.utf16.distance(from: content.utf16.startIndex, to: content.index(before: index))
     }
 
     /// Replaces a UTF-16 range with new text and updates line starts incrementally.
     public mutating func replace(_ range: Range<Int>, with replacement: String) {
         precondition(range.lowerBound >= 0 && range.upperBound <= utf16Count, "range out of bounds")
+        let units = Array(replacement.utf16)
 
-        let utf16 = string.utf16
-        let start = utf16.index(utf16.startIndex, offsetBy: range.lowerBound)
-        let end = utf16.index(start, offsetBy: range.count)
-        string.replaceSubrange(start..<end, with: replacement)
-
-        // Line starts strictly inside (lowerBound, upperBound] belong to newlines that were removed.
+        // Line starts strictly inside (lowerBound, upperBound] belong to newlines that are removed.
         let firstKept = line(at: range.lowerBound) + 1
         let firstAfter = line(at: range.upperBound) + 1
-        let inserted = TextStorage.lineStarts(in: replacement, base: range.lowerBound).dropFirst()
+        let inserted = TextStorage.lineStarts(in: units, base: range.lowerBound).dropFirst()
 
-        let delta = replacement.utf16.count - range.count
+        buffer.replace(range, with: units)
+
+        let delta = units.count - range.count
         if delta != 0 {
             for index in firstAfter..<lineStarts.count {
                 lineStarts[index] += delta
@@ -86,13 +94,11 @@ public struct TextStorage: Sendable {
         lineStarts.replaceSubrange(firstKept..<firstAfter, with: inserted)
     }
 
-    /// Line starts of `string`, offset by `base`. The first element is always `base`.
-    private static func lineStarts(in string: String, base: Int) -> [Int] {
+    /// Line starts of `units`, offset by `base`. The first element is always `base`.
+    private static func lineStarts(in units: [UInt16], base: Int) -> [Int] {
         var starts = [base]
-        var offset = base
-        for unit in string.utf16 {
-            offset += 1
-            if unit == 0x0A { starts.append(offset) }
+        for (index, unit) in units.enumerated() where unit == 0x0A {
+            starts.append(base + index + 1)
         }
         return starts
     }
