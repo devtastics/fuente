@@ -108,7 +108,7 @@ import Testing
         let incremental = HighlightEngine(language: Languages.php)
         var storage = TextStorage("<?php\nfunction foo($bar) {\n    return $bar;\n}\n")
         _ = await incremental.highlights(for: storage.utf16Units)
-        let brace = storage.utf16Units.firstIndex(of: UInt16(ascii: "{"))!
+        let brace = storage.utf16Units.firstIndex(of: 0x7B)! // "{"
         let broken = storage.replace(brace..<(brace + 1), with: "")   // remove "{"
         _ = await incremental.highlights(for: storage.utf16Units, edits: [broken])
         let fixed = storage.replace(brace..<brace, with: "{")         // put it back
