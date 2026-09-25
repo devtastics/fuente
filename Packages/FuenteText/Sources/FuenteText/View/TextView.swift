@@ -9,6 +9,9 @@ import AppKit
 public final class TextView: NSView {
     public let layoutManager: TextLayoutManager
 
+    /// Posted with the view as object after every text change made through the view.
+    public static let textDidChangeNotification = Notification.Name("FuenteText.TextView.textDidChange")
+
     public var selection = TextSelection(caret: 0) {
         didSet {
             guard selection != oldValue else { return }
@@ -127,6 +130,21 @@ public final class TextView: NSView {
             setFrameSize(size)
             needsDisplay = true
         }
+    }
+
+    // MARK: - Styles
+
+    /// Applies highlight colors. Metrics are untouched, so this never scrolls or reflows.
+    public func setStyles(_ styles: [StyledRange]) {
+        layoutManager.setStyles(styles)
+        needsDisplay = true
+    }
+
+    /// Dynamic colors resolve at typesetting time, so glyph runs must be rebuilt when the appearance flips.
+    public override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layoutManager.invalidateLayoutsKeepingHeights()
+        needsDisplay = true
     }
 
     // MARK: - Geometry

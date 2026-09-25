@@ -20,11 +20,13 @@ jobs:
           xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
           sudo xcode-select -s "$xcode"
           swift --version
-      - name: Build and test FuenteText
-        working-directory: Packages/FuenteText
+      - name: Build and test packages
         run: |
-          swift build
-          swift test
+          for package in Packages/FuenteText Packages/Grammars/TreeSitterPHP Packages/FuenteSyntax; do
+            echo "::group::$package"
+            (cd "$package" && swift build && swift test)
+            echo "::endgroup::"
+          done
 
   app:
     name: Fuente.app (macOS 26)

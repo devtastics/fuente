@@ -8,12 +8,25 @@ public struct LineTypesetter {
 
     public init(font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular)) {
         self.font = font
-        self.attributes = [.font: font]
+        // Unstyled text takes the fill color of the drawing context, so the view controls the default color.
+        self.attributes = [
+            .font: font,
+            NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
+        ]
     }
 
     /// Typesets `text` (a single line, no newline). `width` of `nil` means no wrapping.
-    public func typeset(_ text: String, width: CGFloat? = nil) -> [LineFragment] {
-        let attributed = NSAttributedString(string: text, attributes: attributes)
+    /// `styles` are UTF-16 ranges local to the line; later entries override earlier ones where they overlap.
+    public func typeset(_ text: String, styles: [StyledRange] = [], width: CGFloat? = nil) -> [LineFragment] {
+        let attributed = NSMutableAttributedString(string: text, attributes: attributes)
+        let colorKey = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
+        let fromContextKey = NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String)
+        for style in styles {
+            let clamped = style.range.clamped(to: 0..<attributed.length)
+            guard !clamped.isEmpty else { continue }
+            attributed.addAttribute(colorKey, value: style.color.cgColor, range: NSRange(clamped))
+            attributed.removeAttribute(fromContextKey, range: NSRange(clamped))
+        }
         let length = attributed.length
         guard length > 0 else { return [emptyFragment(attributed)] }
 

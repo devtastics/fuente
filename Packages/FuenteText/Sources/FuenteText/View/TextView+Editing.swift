@@ -54,6 +54,7 @@ extension TextView {
         needsDisplay = true
         gutter?.updateThickness()
         delegate?.textViewDidChangeText(self)
+        NotificationCenter.default.post(name: TextView.textDidChangeNotification, object: self)
     }
 
     /// Inserts typed text, coalescing consecutive keystrokes into one undo action.

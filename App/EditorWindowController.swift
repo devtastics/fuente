@@ -1,10 +1,12 @@
 import AppKit
+import FuenteSyntax
 import FuenteText
 
 /// One window showing one file. The seed of the editor shell.
 final class EditorWindowController: NSWindowController, NSWindowDelegate, TextViewDelegate {
     private var fileURL: URL?
     private let textView: TextView
+    private var highlighter: SyntaxHighlighter?
 
     init(fileURL: URL?) {
         self.fileURL = fileURL
@@ -37,6 +39,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, TextVi
         window.initialFirstResponder = textView
         window.center()
         textView.delegate = self
+
+        if let ext = fileURL?.pathExtension, let language = Languages.language(forFileExtension: ext) {
+            highlighter = SyntaxHighlighter(textView: textView, language: language, theme: .system)
+        }
     }
 
     @available(*, unavailable)

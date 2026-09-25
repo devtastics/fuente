@@ -40,6 +40,11 @@ public final class TextLayoutManager {
     private var layouts: [[LineFragment]?]
     private var heights: PrefixSumTree
 
+    /// Colors over the document, sorted by start. `styleMaxEnds[i]` is the largest end among `styles[0...i]`,
+    /// which lets the per-line lookup stop walking backwards as soon as no earlier style can reach the line.
+    private var styles: [StyledRange] = []
+    private var styleMaxEnds: [Int] = []
+
     public init(storage: TextStorage, typesetter: LineTypesetter = LineTypesetter(), wrapWidth: CGFloat? = nil) {
         self.storage = storage
         self.typesetter = typesetter
@@ -75,11 +80,74 @@ public final class TextLayoutManager {
         return result
     }
 
+    // MARK: - Styles
+
+    /// Replaces all colors. Keeps line heights: color does not change metrics, so only glyph runs are redone.
+    public func setStyles(_ newStyles: [StyledRange]) {
+        styles = newStyles.sorted { $0.range.lowerBound < $1.range.lowerBound }
+        rebuildStyleIndex()
+        invalidateLayoutsKeepingHeights()
+    }
+
+    private func rebuildStyleIndex() {
+        styleMaxEnds.removeAll(keepingCapacity: true)
+        var maxEnd = 0
+        for style in styles {
+            maxEnd = max(maxEnd, style.range.upperBound)
+            styleMaxEnds.append(maxEnd)
+        }
+    }
+
+    /// Styles intersecting a document range, clipped to it and made relative to `range.lowerBound`,
+    /// in document order so nested (later-starting) styles override their containers.
+    public func styles(in range: Range<Int>) -> [StyledRange] {
+        guard !styles.isEmpty else { return [] }
+        // First style starting at or after the end of the range: nothing from there on can intersect.
+        var low = 0, high = styles.count
+        while low < high {
+            let mid = (low + high) / 2
+            if styles[mid].range.lowerBound < range.upperBound { low = mid + 1 } else { high = mid }
+        }
+        var result: [StyledRange] = []
+        var index = low - 1
+        while index >= 0, styleMaxEnds[index] > range.lowerBound {
+            let style = styles[index]
+            if style.range.upperBound > range.lowerBound {
+                let clipped = style.range.clamped(to: range)
+                let local = (clipped.lowerBound - range.lowerBound)..<(clipped.upperBound - range.lowerBound)
+                result.append(StyledRange(range: local, color: style.color))
+            }
+            index -= 1
+        }
+        result.reverse()
+        return result
+    }
+
+    /// Keeps styles consistent with an edit until the highlighter catches up: drops styles touching
+    /// the edited range and shifts the ones after it.
+    private func adjustStyles(for range: Range<Int>, insertedLength: Int) {
+        guard !styles.isEmpty else { return }
+        let delta = insertedLength - range.count
+        styles = styles.compactMap { style in
+            if style.range.upperBound <= range.lowerBound { return style }
+            if style.range.lowerBound >= range.upperBound {
+                return StyledRange(range: (style.range.lowerBound + delta)..<(style.range.upperBound + delta), color: style.color)
+            }
+            return nil
+        }
+        rebuildStyleIndex()
+    }
+
+    /// Drops glyph runs but keeps heights. For color-only changes, such as highlighting or appearance.
+    public func invalidateLayoutsKeepingHeights() {
+        layouts = Array(repeating: nil, count: storage.lineCount)
+    }
+
     /// Fragments of a line, typesetting it now if it has none.
     @discardableResult
     public func ensureLayout(_ line: Int) -> [LineFragment] {
         if let existing = layouts[line] { return existing }
-        let fragments = typesetter.typeset(storage.lineContent(line), width: wrapWidth)
+        let fragments = typesetter.typeset(storage.lineContent(line), styles: styles(in: storage.lineRange(line)), width: wrapWidth)
         let height = fragments.reduce(0) { $0 + $1.height }
         heights.add(height - self.height(ofLine: line), at: line)
         contentWidth = max(contentWidth, fragments.map(\.width).max() ?? 0)
@@ -155,6 +223,7 @@ public final class TextLayoutManager {
         let firstLine = storage.line(at: range.lowerBound)
         let lastOldLine = storage.line(at: range.upperBound)
         storage.replace(range, with: text)
+        adjustStyles(for: range, insertedLength: text.utf16.count)
         let lastNewLine = storage.line(at: range.lowerBound + text.utf16.count)
 
         let replacement = [[LineFragment]?](repeating: nil, count: lastNewLine - firstLine + 1)

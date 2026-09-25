@@ -1,0 +1,5 @@
+# Generated grammar sources: collapse in diffs and language stats.
+Packages/Grammars/*/php/src/parser.c linguist-generated=true
+Packages/Grammars/*/php/src/scanner.c linguist-vendored=true
+Packages/Grammars/*/php/src/tree_sitter/* linguist-vendored=true
+Packages/Grammars/*/common/* linguist-vendored=true

@@ -34,10 +34,13 @@ open Fuente.xcodeproj
 Packages build and test on their own, without Xcode:
 
 ```sh
-cd Packages/FuenteText
+cd Packages/FuenteText     # text engine: storage, layout, TextView
+cd Packages/FuenteSyntax   # tree-sitter highlighting
 swift build
 swift test
 ```
+
+Grammars are vendored under `Packages/Grammars/`, one Swift package each, refreshed from upstream with their `update.sh`. PHP is the first one.
 
 ## Contributing
 

@@ -9,6 +9,8 @@ options:
 packages:
   FuenteText:
     path: Packages/FuenteText
+  FuenteSyntax:
+    path: Packages/FuenteSyntax
 
 settings:
   base:
@@ -31,6 +33,7 @@ targets:
       - App
     dependencies:
       - package: FuenteText
+      - package: FuenteSyntax
     info:
       path: App/Resources/Info.plist
       properties:
