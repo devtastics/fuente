@@ -39,6 +39,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
         window.delegate = self
         window.contentViewController = splitViewController
+        // A content view controller resizes the window to its view, which starts at zero.
+        window.setContentSize(NSSize(width: 1100, height: 720))
         window.center()
         updateTitle()
 

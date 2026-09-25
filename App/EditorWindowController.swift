@@ -21,6 +21,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         window.title = editor.document.name
         window.representedURL = fileURL
         window.contentViewController = editor
+        window.setContentSize(NSSize(width: 900, height: 640))
         window.initialFirstResponder = editor.textView
         window.center()
         editor.onChange = { [weak self] editor in
