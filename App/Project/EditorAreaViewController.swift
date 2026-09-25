@@ -25,7 +25,8 @@ final class EditorAreaViewController: NSViewController {
         view.addSubview(container)
         view.addSubview(placeholder)
         NSLayoutConstraint.activate([
-            tabBar.topAnchor.constraint(equalTo: view.topAnchor),
+            // The window's content extends under the toolbar; start below it.
+            tabBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tabBar.heightAnchor.constraint(equalToConstant: TabBarView.height),
