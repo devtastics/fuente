@@ -1,17 +1,23 @@
 import AppKit
 import FuenteText
 
-/// Keeps a `TextView` highlighted: reparses after every change and applies the theme's colors.
+/// Keeps a `TextView` highlighted: reparses after every change and colors the visible part of the document.
+///
+/// Only the lines on screen plus a margin get spans, so memory and query time stay proportional to the
+/// viewport, not the file. Scrolling past the covered window triggers another pass.
 @MainActor
 public final class SyntaxHighlighter {
     public let textView: TextView
     public var theme: Theme {
-        didSet { apply(lastSpans) }
+        didSet { highlight() }
     }
+
+    /// Lines colored above and below the visible ones. Two screens' worth on a typical window.
+    public var marginLines = 200
 
     private let engine: HighlightEngine
     private var task: Task<Void, Never>?
-    private var lastSpans: [HighlightSpan] = []
+    private var coveredRange: Range<Int> = 0..<0
 
     public init(textView: TextView, language: Language, theme: Theme) {
         self.textView = textView
@@ -20,6 +26,12 @@ public final class SyntaxHighlighter {
         NotificationCenter.default.addObserver(
             self, selector: #selector(textDidChange), name: TextView.textDidChangeNotification, object: textView
         )
+        if let clipView = textView.enclosingScrollView?.contentView {
+            clipView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(didScroll), name: NSView.boundsDidChangeNotification, object: clipView
+            )
+        }
         highlight()
     }
 
@@ -27,17 +39,26 @@ public final class SyntaxHighlighter {
         highlight()
     }
 
-    /// Cancels any pending pass and starts one for the current text. Results land back on the main actor.
+    /// Scrolling only costs a pass when the viewport leaves the colored window.
+    @objc private func didScroll(_ notification: Notification) {
+        let visible = textView.visibleCharacterRange()
+        if visible.lowerBound < coveredRange.lowerBound || visible.upperBound > coveredRange.upperBound {
+            highlight()
+        }
+    }
+
+    /// Cancels any pending pass and starts one for the current text and viewport. Results land back on the main actor.
     public func highlight() {
         task?.cancel()
         let units = textView.layoutManager.storage.utf16Units
+        let range = textView.visibleCharacterRange(marginLines: marginLines)
         let engine = engine
         task = Task { [weak self] in
             let start = ContinuousClock.now
-            let spans = await engine.highlights(for: units)
+            let spans = await engine.highlights(for: units, in: range)
             guard !Task.isCancelled, let self else { return }
             EditorMetrics.shared.recordHighlight(ContinuousClock.now - start, spans: spans.count)
-            self.lastSpans = spans
+            self.coveredRange = range
             self.apply(spans)
         }
     }

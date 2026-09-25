@@ -47,6 +47,15 @@ struct PerformanceTests {
         print("PERF highlight 1 MB PHP: \(elapsed), spans: \(spans.count), lines: \(Self.bigSource.split(separator: "\n").count)")
         #expect(!spans.isEmpty)
         #expect(elapsed < .seconds(2))
+
+        // What the editor actually does: parse everything, query only a viewport-sized window.
+        let units = Array(Self.bigSource.utf16)
+        var windowSpans: [HighlightSpan] = []
+        let windowed = await clock.measure { windowSpans = await engine.highlights(for: units, in: 500_000..<540_000) }
+        print("PERF highlight 1 MB PHP, 40k-unit window: \(windowed), spans: \(windowSpans.count)")
+        #expect(!windowSpans.isEmpty)
+        #expect(windowSpans.count < spans.count / 10)
+        #expect(windowed < .milliseconds(800))
     }
 }
 

@@ -61,6 +61,16 @@ import Testing
         }
     }
 
+    @Test func rangeLimitsSpansToTheWindow() async {
+        let source = "<?php\n$a = 1;\n$b = 2;\n$c = 3;"
+        let all = await engine.highlights(for: Array(source.utf16))
+        let window = await engine.highlights(for: Array(source.utf16), in: 14..<21) // "$b = 2;"
+        #expect(window.count < all.count)
+        #expect(window.allSatisfy { $0.range.upperBound > 14 && $0.range.lowerBound < 21 })
+        #expect(span(window, "variable", text: "$b", in: source) != nil)
+        #expect(span(window, "variable", text: "$a", in: source) == nil)
+    }
+
     @Test func emptyDocumentHasNoSpans() async {
         #expect(await spans("").isEmpty)
     }

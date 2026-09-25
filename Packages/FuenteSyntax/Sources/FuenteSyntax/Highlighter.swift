@@ -34,7 +34,8 @@ public actor HighlightEngine {
     }
 
     /// Same, from UTF-16 code units: what `TextStorage` holds and what tree-sitter parses natively.
-    public func highlights(for units: [UInt16]) -> [HighlightSpan] {
+    /// With `range`, only captures intersecting it are returned; the parse still covers the whole document.
+    public func highlights(for units: [UInt16], in range: Range<Int>? = nil) -> [HighlightSpan] {
         let parseState = Self.signposter.beginInterval("parse")
         let tree = parser.parse(units)
         Self.signposter.endInterval("parse", parseState)
@@ -43,7 +44,7 @@ public actor HighlightEngine {
         let queryState = Self.signposter.beginInterval("query")
         defer { Self.signposter.endInterval("query", queryState) }
         let cursor = QueryCursor()
-        cursor.execute(query, on: tree.rootNode)
+        cursor.execute(query, on: tree.rootNode, utf16Range: range)
 
         var raw: [(span: HighlightSpan, pattern: Int)] = []
         while let match = cursor.nextMatch() {
