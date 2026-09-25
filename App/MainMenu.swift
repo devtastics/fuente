@@ -27,7 +27,8 @@ enum MainMenu {
         submenu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
         submenu.addItem(recentMenuItem())
         submenu.addItem(.separator())
-        submenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        submenu.addItem(withTitle: "Close Tab", action: Selector(("closeTab:")), keyEquivalent: "w")
+        submenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "W")
         submenu.addItem(withTitle: "Save", action: #selector(EditorWindowController.saveDocument(_:)), keyEquivalent: "s")
         return item(submenu)
     }
@@ -59,6 +60,11 @@ enum MainMenu {
         let submenu = NSMenu(title: "Window")
         submenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         submenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        submenu.addItem(.separator())
+        let next = submenu.addItem(withTitle: "Show Next Tab", action: Selector(("selectNextTab:")), keyEquivalent: "]")
+        next.keyEquivalentModifierMask = [.command, .shift]
+        let previous = submenu.addItem(withTitle: "Show Previous Tab", action: Selector(("selectPreviousTab:")), keyEquivalent: "[")
+        previous.keyEquivalentModifierMask = [.command, .shift]
         NSApp.windowsMenu = submenu
         return item(submenu)
     }

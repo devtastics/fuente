@@ -38,6 +38,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         editor.save()
     }
 
+    /// A single-file window has no tabs: closing the tab closes the window.
+    @objc func closeTab(_ sender: Any?) {
+        window?.performClose(sender)
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard editor.document.isDirty else { return true }
         switch UnsavedChangesAlert.run(for: [editor.document.name]) {

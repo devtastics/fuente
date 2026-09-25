@@ -46,6 +46,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
         navigator.onSelectFile = { [weak self] url in self?.open(url) }
         editorArea.onChange = { [weak self] _ in self?.updateTitle() }
+        editorArea.tabBar.onSelect = { [weak self] document in self?.activate(document) }
+        editorArea.tabBar.onClose = { [weak self] document in self?.close(document) }
     }
 
     @available(*, unavailable)
@@ -55,12 +57,52 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     func open(_ url: URL) {
         do {
             let document = try workspace.open(url)
-            editorArea.show(document)
+            editorArea.show(document, in: workspace)
             navigator.reveal(url)
             updateTitle()
         } catch {
             NSAlert(error: error).runModal()
         }
+    }
+
+    func activate(_ document: Document) {
+        workspace.activate(document)
+        editorArea.show(document, in: workspace)
+        if let url = document.url { navigator.reveal(url) }
+        updateTitle()
+    }
+
+    /// Closes a tab, asking about unsaved changes first.
+    func close(_ document: Document) {
+        if document.isDirty {
+            switch UnsavedChangesAlert.run(for: [document.name]) {
+            case .save: guard editorArea.editor(for: document).save() else { return }
+            case .discard: break
+            case .cancel: return
+            }
+        }
+        workspace.close(document)
+        editorArea.remove(document)
+        editorArea.show(workspace.activeDocument, in: workspace)
+        if let url = workspace.activeDocument?.url { navigator.reveal(url) }
+        updateTitle()
+    }
+
+    @objc func closeTab(_ sender: Any?) {
+        if let document = workspace.activeDocument {
+            close(document)
+        } else {
+            window?.performClose(sender)
+        }
+    }
+
+    @objc func selectNextTab(_ sender: Any?) { selectTab(offset: 1) }
+    @objc func selectPreviousTab(_ sender: Any?) { selectTab(offset: -1) }
+
+    private func selectTab(offset: Int) {
+        let documents = workspace.documents
+        guard let active = workspace.activeDocument, let index = documents.firstIndex(where: { $0 === active }), documents.count > 1 else { return }
+        activate(documents[(index + offset + documents.count) % documents.count])
     }
 
     private func updateTitle() {
