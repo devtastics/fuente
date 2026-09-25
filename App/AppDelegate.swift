@@ -1,34 +1,67 @@
 import AppKit
+import FuenteWorkspace
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var windowControllers: [EditorWindowController] = []
+    private var fileWindows: [EditorWindowController] = []
+    private var projectWindows: [ProjectWindowController] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build()
-        if windowControllers.isEmpty {
-            openWindow(with: nil)
+        if fileWindows.isEmpty && projectWindows.isEmpty {
+            openFileWindow(nil)
         }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls { openWindow(with: url) }
+        urls.forEach(open)
     }
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.sourceCode, .plainText, .data]
+        panel.message = "Open a folder as a project, or individual files."
         guard panel.runModal() == .OK else { return }
-        for url in panel.urls { openWindow(with: url) }
+        panel.urls.forEach(open)
     }
 
-    private func openWindow(with url: URL?) {
-        let controller = EditorWindowController(fileURL: url)
-        windowControllers.append(controller)
+    /// Folders become projects. Files open inside a project that contains them, or in their own window.
+    func open(_ url: URL) {
+        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+        if isDirectory {
+            openProject(url)
+        } else if let project = projectWindows.first(where: { $0.workspace.contains(url) }) {
+            project.open(url)
+            project.showWindow(nil)
+        } else {
+            openFileWindow(url)
+        }
+    }
+
+    private func openProject(_ url: URL) {
+        let root = url.standardizedFileURL
+        if let existing = projectWindows.first(where: { $0.workspace.rootURL == root }) {
+            existing.showWindow(nil)
+            return
+        }
+        let controller = ProjectWindowController(workspace: Workspace(rootURL: root))
+        projectWindows.append(controller)
         controller.showWindow(nil)
+        NSDocumentController.shared.noteNewRecentDocumentURL(root)
+    }
+
+    private func openFileWindow(_ url: URL?) {
+        do {
+            let controller = try EditorWindowController(fileURL: url)
+            fileWindows.append(controller)
+            controller.showWindow(nil)
+            if let url { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
+        } catch {
+            NSAlert(error: error).runModal()
+        }
     }
 }

@@ -11,6 +11,8 @@ packages:
     path: Packages/FuenteText
   FuenteSyntax:
     path: Packages/FuenteSyntax
+  FuenteWorkspace:
+    path: Packages/FuenteWorkspace
 
 settings:
   base:
@@ -34,6 +36,7 @@ targets:
     dependencies:
       - package: FuenteText
       - package: FuenteSyntax
+      - package: FuenteWorkspace
     info:
       path: App/Resources/Info.plist
       properties:

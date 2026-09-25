@@ -22,7 +22,7 @@ jobs:
           swift --version
       - name: Build and test packages
         run: |
-          for package in Packages/FuenteText Packages/Grammars/TreeSitterPHP Packages/FuenteSyntax; do
+          for package in Packages/FuenteText Packages/Grammars/TreeSitterPHP Packages/FuenteSyntax Packages/FuenteWorkspace; do
             echo "::group::$package"
             (cd "$package" && swift build && swift test)
             echo "::endgroup::"

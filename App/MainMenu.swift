@@ -25,10 +25,21 @@ enum MainMenu {
     private static func fileMenu() -> NSMenuItem {
         let submenu = NSMenu(title: "File")
         submenu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
+        submenu.addItem(recentMenuItem())
         submenu.addItem(.separator())
         submenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         submenu.addItem(withTitle: "Save", action: #selector(EditorWindowController.saveDocument(_:)), keyEquivalent: "s")
         return item(submenu)
+    }
+
+    private static func recentMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Open Recent")
+        submenu.addItem(withTitle: "Clear Menu", action: #selector(NSDocumentController.clearRecentDocuments(_:)), keyEquivalent: "")
+        // AppKit fills this menu with recent documents when it carries this action-less structure.
+        submenu.perform(NSSelectorFromString("_setMenuName:"), with: "NSRecentDocumentsMenu")
+        item.submenu = submenu
+        return item
     }
 
     private static func editMenu() -> NSMenuItem {
