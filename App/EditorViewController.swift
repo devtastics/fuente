@@ -13,10 +13,11 @@ final class EditorViewController: NSViewController, TextViewDelegate {
     /// Called after every text change, so the window can update its edited state.
     var onChange: ((EditorViewController) -> Void)?
 
-    init(document: Document) {
+    /// Reads the file once, into the editor's storage. The document keeps no copy.
+    init(document: Document) throws {
         self.document = document
         let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        textView = TextView(storage: TextStorage(document.savedText), typesetter: LineTypesetter(font: font))
+        textView = TextView(storage: TextStorage(try document.read()), typesetter: LineTypesetter(font: font))
         super.init(nibName: nil, bundle: nil)
     }
 

@@ -66,9 +66,13 @@ public actor HighlightEngine {
     /// The main entry point: reads the storage in place, no copy. With `range`, only captures intersecting
     /// it are returned. `edits` are the changes since the previous call, in order; with them the parse is
     /// incremental, without them and with an unchanged length the previous tree is reused as is.
-    public func highlights(for storage: TextStorage, in range: Range<Int>? = nil, edits: [TextEdit] = []) -> [HighlightSpan] {
+    ///
+    /// With `parseWindow`, only that part of the document (plus its first line, so grammars like PHP see
+    /// their opening tag) is parsed, from scratch, and nothing is retained: memory and time then depend on
+    /// the window, not the file. `range` should lie inside the window.
+    public func highlights(for storage: TextStorage, in range: Range<Int>? = nil, edits: [TextEdit] = [], parseWindow: Range<Int>? = nil) -> [HighlightSpan] {
         let parseState = Self.signposter.beginInterval("parse")
-        let tree = parse(storage, edits: edits)
+        let tree = parseWindow.map { parseWindowed(storage, window: $0) } ?? parse(storage, edits: edits)
         Self.signposter.endInterval("parse", parseState)
         guard let tree else { return [] }
 
@@ -92,6 +96,17 @@ public actor HighlightEngine {
         }
 
         return resolve(raw)
+    }
+
+    /// Parses the first line plus `window`, returns the tree and keeps none of it.
+    private func parseWindowed(_ storage: TextStorage, window: Range<Int>) -> Tree? {
+        reset()
+        let firstLineEnd = min(storage.utf16Count, storage.lineCount > 1 ? storage.lineStarts[1] : storage.utf16Count)
+        let window = window.clamped(to: 0..<storage.utf16Count)
+        let ranges = window.lowerBound <= firstLineEnd ? [0..<max(window.upperBound, firstLineEnd)] : [0..<firstLineEnd, window]
+        parser.setIncludedRanges(ranges, in: storage)
+        defer { parser.setIncludedRanges(nil, in: storage) }
+        return parser.parse(storage)
     }
 
     private func parse(_ storage: TextStorage, edits: [TextEdit]) -> Tree? {
@@ -127,3 +142,5 @@ public actor HighlightEngine {
         return result
     }
 }
+
+extension HighlightSpan: Hashable {}

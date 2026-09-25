@@ -24,16 +24,20 @@ public final class Workspace {
         return documents.first { $0.url == url }
     }
 
-    /// Opens a file, or activates it if already open.
+    /// Opens a file, or activates it if already open. Fails if the file cannot be read.
     @discardableResult
     public func open(_ url: URL) throws -> Document {
-        let document = try self.document(for: url) ?? {
-            let created = try Document(url: url)
-            documents.append(created)
-            return created
-        }()
-        activeDocument = document
-        return document
+        if let existing = document(for: url) {
+            activeDocument = existing
+            return existing
+        }
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            throw DocumentError.unreadable(url)
+        }
+        let created = Document(url: url)
+        documents.append(created)
+        activeDocument = created
+        return created
     }
 
     public func activate(_ document: Document) {
@@ -80,7 +84,6 @@ public final class Workspace {
     public func restore(_ state: WorkspaceState) -> [URL] {
         for path in state.openFiles {
             let url = url(forRelativePath: path)
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
             _ = try? open(url)
         }
         if let active = state.activeFile.map(url(forRelativePath:)), let document = document(for: active) {

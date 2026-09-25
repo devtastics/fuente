@@ -6,7 +6,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private let editor: EditorViewController
 
     init(fileURL: URL?) throws {
-        editor = EditorViewController(document: try Document(url: fileURL))
+        editor = try EditorViewController(document: Document(url: fileURL))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],

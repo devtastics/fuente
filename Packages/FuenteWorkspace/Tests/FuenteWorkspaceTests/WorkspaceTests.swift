@@ -62,7 +62,7 @@ private func makeProject() throws -> URL {
         #expect(try workspace.open(root.appendingPathComponent("src/main.php")) === main)
         #expect(workspace.documents.count == 2)
         #expect(workspace.activeDocument === main)
-        #expect(main.savedText == "<?php")
+        #expect(try main.read() == "<?php")
     }
 
     @Test func closingPicksANeighbor() throws {
@@ -81,6 +81,16 @@ private func makeProject() throws -> URL {
         #expect(workspace.activeDocument == nil)
     }
 
+    @Test func openingAnUnreadableFileFails() throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = Workspace(rootURL: root)
+        #expect(throws: DocumentError.unreadable(root.appendingPathComponent("missing.txt").standardizedFileURL)) {
+            try workspace.open(root.appendingPathComponent("missing.txt"))
+        }
+        #expect(workspace.documents.isEmpty)
+    }
+
     @Test func containsAndSaveRoundTrip() throws {
         let root = try makeProject()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -97,8 +107,9 @@ private func makeProject() throws -> URL {
     }
 
     @Test func untitledDocumentNeedsALocation() throws {
-        let doc = try Document(url: nil)
+        let doc = Document(url: nil)
         #expect(doc.name == "Untitled")
+        #expect(try doc.read() == "")
         #expect(throws: DocumentError.noLocation) { try doc.save("x") }
         let target = FileManager.default.temporaryDirectory.appendingPathComponent("fuente-\(UUID().uuidString).txt")
         defer { try? FileManager.default.removeItem(at: target) }

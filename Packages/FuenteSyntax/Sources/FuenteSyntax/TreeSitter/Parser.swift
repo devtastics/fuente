@@ -12,6 +12,25 @@ final class Parser {
 
     deinit { ts_parser_delete(pointer) }
 
+    /// Restricts parsing to these UTF-16 ranges (sorted, non-overlapping), treated as one contiguous text.
+    /// `nil` parses the whole document again.
+    func setIncludedRanges(_ ranges: [Range<Int>]?, in storage: TextStorage) {
+        guard let ranges, !ranges.isEmpty else {
+            ts_parser_set_included_ranges(pointer, nil, 0)
+            return
+        }
+        var tsRanges = ranges.map { range -> TSRange in
+            let start = storage.point(at: range.lowerBound), end = storage.point(at: range.upperBound)
+            return TSRange(
+                start_point: TSPoint(row: UInt32(start.row), column: UInt32(start.column * 2)),
+                end_point: TSPoint(row: UInt32(end.row), column: UInt32(end.column * 2)),
+                start_byte: UInt32(range.lowerBound * 2), end_byte: UInt32(range.upperBound * 2)
+            )
+        }
+        let accepted = tsRanges.withUnsafeMutableBufferPointer { ts_parser_set_included_ranges(pointer, $0.baseAddress, UInt32($0.count)) }
+        precondition(accepted, "included ranges must be sorted and non-overlapping")
+    }
+
     /// Parses UTF-16 code units. `oldTree` must have been edited to match `text` first; pass `nil` for a full parse.
     func parse(_ text: [UInt16], oldTree: Tree? = nil) -> Tree? {
         let raw = text.withUnsafeBufferPointer { buffer -> OpaquePointer? in

@@ -158,6 +158,28 @@ import Testing
         #expect(spans == (await HighlightEngine(language: Languages.php).highlights(for: storage)))
     }
 
+    /// Parsing only a window must color it exactly like a full parse does, edge included.
+    @Test func windowedParseMatchesFullParseInsideTheWindow() async {
+        let unit = "<?php\nnamespace App;\n/** doc */\nfinal class Item%d {\n    public const LIMIT = 10;\n    public function load(int $count): int { return $count > self::LIMIT ? self::LIMIT : $count; } // note\n}\n"
+        let source = (0..<400).map { String(format: unit, $0) }.joined()   // ~80 KB
+        let storage = TextStorage(source)
+        let full = await HighlightEngine(language: Languages.php).highlights(for: storage)
+        let center = storage.utf16Count / 2
+        let window = storage.lineStarts[storage.line(at: center - 5_000)]..<storage.lineRange(storage.line(at: center + 5_000)).upperBound
+        let inner = (window.lowerBound + 1_000)..<(window.upperBound - 1_000)
+        let windowed = await HighlightEngine(language: Languages.php).highlights(for: storage, in: inner, parseWindow: window)
+        let expected = full.filter { $0.range.overlaps(inner) }
+        #expect(Set(windowed) == Set(expected))
+        #expect(!windowed.isEmpty)
+    }
+
+    @Test func windowedParseKeepsNoTree() async {
+        let engine = HighlightEngine(language: Languages.php)
+        let storage = TextStorage("<?php\n$a = 1;\n$b = 2;\n")
+        _ = await engine.highlights(for: storage, in: 6..<13, parseWindow: 6..<13)
+        #expect(await engine.debugTree().sexp.isEmpty)
+    }
+
     @Test func emptyDocumentHasNoSpans() async {
         #expect(await spans("").isEmpty)
     }

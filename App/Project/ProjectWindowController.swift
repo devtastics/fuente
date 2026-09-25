@@ -52,7 +52,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         workspace.onDocumentsChangedOnDisk = { [weak self] documents in
             // Xcode's rule: unmodified documents follow the disk; edited ones keep the user's version.
             for document in documents where !document.isDirty {
-                self?.editorArea.editor(for: document).reloadFromDisk()
+                (try? self?.editorArea.editor(for: document))?.reloadFromDisk()
             }
         }
         workspace.startWatching()
@@ -69,7 +69,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     func open(_ url: URL) {
         do {
             let document = try workspace.open(url)
-            editorArea.show(document, in: workspace)
+            try editorArea.show(document, in: workspace)
             navigator.reveal(url)
             updateTitle()
             scheduleStateSave()
@@ -80,7 +80,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     func activate(_ document: Document) {
         workspace.activate(document)
-        editorArea.show(document, in: workspace)
+        do { try editorArea.show(document, in: workspace) } catch { NSAlert(error: error).runModal(); return }
         if let url = document.url { navigator.reveal(url) }
         updateTitle()
         scheduleStateSave()
@@ -90,14 +90,14 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     func close(_ document: Document) {
         if document.isDirty {
             switch UnsavedChangesAlert.run(for: [document.name]) {
-            case .save: guard editorArea.editor(for: document).save() else { return }
+            case .save: guard (try? editorArea.editor(for: document))?.save() == true else { return }
             case .discard: break
             case .cancel: return
             }
         }
         workspace.close(document)
         editorArea.remove(document)
-        editorArea.show(workspace.activeDocument, in: workspace)
+        try? editorArea.show(workspace.activeDocument, in: workspace)
         if let url = workspace.activeDocument?.url { navigator.reveal(url) }
         updateTitle()
         scheduleStateSave()
@@ -139,7 +139,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         guard let state = stateStore.load(for: workspace.rootURL) else { return }
         let folders = workspace.restore(state)
         navigator.expand(folders)
-        editorArea.show(workspace.activeDocument, in: workspace)
+        try? editorArea.show(workspace.activeDocument, in: workspace)
         if let url = workspace.activeDocument?.url { navigator.reveal(url) }
         updateTitle()
     }
@@ -181,7 +181,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         let dirty = workspace.documents.filter(\.isDirty)
         guard !dirty.isEmpty else { return true }
         switch UnsavedChangesAlert.run(for: dirty.map(\.name)) {
-        case .save: return dirty.allSatisfy { editorArea.editor(for: $0).save() }
+        case .save: return dirty.allSatisfy { (try? editorArea.editor(for: $0))?.save() == true }
         case .discard: return true
         case .cancel: return false
         }

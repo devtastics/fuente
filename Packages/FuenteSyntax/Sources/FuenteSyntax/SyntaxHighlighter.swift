@@ -19,10 +19,15 @@ public final class SyntaxHighlighter {
     /// (hundreds of MB for a multi-megabyte file), so they live only while typing is likely to continue.
     public var treeIdleTimeout: Duration = .seconds(4)
 
-    /// Above this many bytes of source the tree is released right after every pass instead of kept for
-    /// incremental parsing: at ~60 bytes of tree per byte of source, a 5 MB file would hold 300 MB.
-    /// Such files pay a full parse per keystroke, off the main thread, and stay cheap in memory.
-    public var maxRetainedTreeSourceBytes = 2_000_000
+    /// Above this many bytes of source, only a window around the viewport is parsed (`parseMarginLines`
+    /// each side) and no tree is kept: at ~50 bytes of tree per byte of source, a full parse of a 5 MB
+    /// file would hold 250 MB. Below it, the whole file is parsed and the tree kept briefly for
+    /// incremental reparsing.
+    public var windowedParsingThresholdBytes = 200_000
+
+    /// Lines parsed above and below the visible ones in windowed mode. Far enough that a construct cut
+    /// at the window's top edge, such as a long comment, resynchronizes before anything visible.
+    public var parseMarginLines = 2_000
 
     private let engine: HighlightEngine
     private var task: Task<Void, Never>?
@@ -74,28 +79,29 @@ public final class SyntaxHighlighter {
         // The storage is a value: the actor shares its buffer copy-on-write and reads it in place.
         let storage = textView.layoutManager.storage
         let range = textView.visibleCharacterRange(marginLines: marginLines)
+        let windowed = storage.utf16Count * 2 > windowedParsingThresholdBytes
+        let parseWindow = windowed ? textView.visibleCharacterRange(marginLines: parseMarginLines) : nil
         let edits = pendingEdits
         pendingEdits.removeAll()
         let engine = engine
         task = Task { [weak self] in
             let start = ContinuousClock.now
-            let spans = await engine.highlights(for: storage, in: range, edits: edits)
+            let spans = await engine.highlights(for: storage, in: range, edits: edits, parseWindow: parseWindow)
             guard !Task.isCancelled, let self else { return }
             EditorMetrics.shared.recordHighlight(ContinuousClock.now - start, spans: spans.count)
             self.coveredRange = range
             self.apply(spans)
-            self.scheduleTreeRelease(sourceBytes: storage.utf16Count * 2)
+            if !windowed { self.scheduleTreeRelease() }
         }
     }
 
-    /// Drops the engine's tree after `treeIdleTimeout` without another pass, or immediately for very large
-    /// sources. The next edit then reparses fully.
-    private func scheduleTreeRelease(sourceBytes: Int) {
+    /// Drops the engine's tree after `treeIdleTimeout` without another pass. The next edit then reparses fully.
+    private func scheduleTreeRelease() {
         idleTask?.cancel()
         let engine = engine
-        let timeout: Duration = sourceBytes > maxRetainedTreeSourceBytes ? .zero : treeIdleTimeout
+        let timeout = treeIdleTimeout
         idleTask = Task {
-            if timeout > .zero { try? await Task.sleep(for: timeout) }
+            try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
             await engine.reset()
         }

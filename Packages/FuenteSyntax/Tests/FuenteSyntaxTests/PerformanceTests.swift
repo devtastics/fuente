@@ -67,6 +67,13 @@ struct PerformanceTests {
         #expect(!typed.isEmpty)
         #expect(incremental < .milliseconds(100))
 
+        // Large-file mode: parse only a window of the 1 MB file. Cost must not depend on the file.
+        var windowedOnly: [HighlightSpan] = []
+        let large = await clock.measure { windowedOnly = await HighlightEngine(language: Languages.php).highlights(for: storage, in: 505_000..<535_000, parseWindow: 480_000..<560_000) }
+        print("PERF windowed parse of 1 MB PHP (80k-unit window): \(large), spans: \(windowedOnly.count)")
+        #expect(!windowedOnly.isEmpty)
+        #expect(large < .milliseconds(60))
+
         // Scrolling: no edits, same text, another window. No parse at all.
         let scrolled = await clock.measure { typed = await engine.highlights(for: storage, in: 100_000..<140_000) }
         print("PERF scroll to a new window, unchanged text: \(scrolled), spans: \(typed.count)")

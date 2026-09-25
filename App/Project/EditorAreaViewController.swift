@@ -39,9 +39,9 @@ final class EditorAreaViewController: NSViewController {
         ])
     }
 
-    func editor(for document: Document) -> EditorViewController {
+    func editor(for document: Document) throws -> EditorViewController {
         if let existing = editors[document.id] { return existing }
-        let editor = EditorViewController(document: document)
+        let editor = try EditorViewController(document: document)
         editor.onChange = { [weak self] in
             self?.tabBar.refresh()
             self?.onChange?($0)
@@ -51,7 +51,8 @@ final class EditorAreaViewController: NSViewController {
     }
 
     /// Shows `document` and rebuilds the tabs from the workspace's document list.
-    func show(_ document: Document?, in workspace: Workspace) {
+    /// Shows `document` and rebuilds the tabs from the workspace's document list. Throws if the file cannot be read.
+    func show(_ document: Document?, in workspace: Workspace) throws {
         if let active = activeEditor {
             active.view.removeFromSuperview()
             active.removeFromParent()
@@ -64,7 +65,7 @@ final class EditorAreaViewController: NSViewController {
             return
         }
         placeholder.isHidden = true
-        let editor = editor(for: document)
+        let editor = try editor(for: document)
         addChild(editor)
         editor.view.frame = container.bounds
         editor.view.autoresizingMask = [.width, .height]

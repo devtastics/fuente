@@ -40,7 +40,7 @@ private func makeFolder() throws -> URL {
         let root = try makeFolder()
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("b.txt")
-        let document = try Document(url: url)
+        let document = Document(url: url)
         #expect(!document.hasChangedOnDisk)
 
         try "changed".write(to: url, atomically: true, encoding: .utf8)
