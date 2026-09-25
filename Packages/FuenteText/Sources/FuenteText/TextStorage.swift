@@ -73,10 +73,20 @@ public struct TextStorage: Sendable {
         return range.lowerBound + content.utf16.distance(from: content.utf16.startIndex, to: content.index(before: index))
     }
 
+    /// Line and column of an offset.
+    public func point(at offset: Int) -> TextPoint {
+        let row = line(at: offset)
+        return TextPoint(row: row, column: offset - lineStarts[row])
+    }
+
     /// Replaces a UTF-16 range with new text and updates line starts incrementally.
-    public mutating func replace(_ range: Range<Int>, with replacement: String) {
+    /// Returns the edit in the form incremental parsers consume.
+    @discardableResult
+    public mutating func replace(_ range: Range<Int>, with replacement: String) -> TextEdit {
         precondition(range.lowerBound >= 0 && range.upperBound <= utf16Count, "range out of bounds")
         let units = Array(replacement.utf16)
+        let startPoint = point(at: range.lowerBound)
+        let oldEndPoint = point(at: range.upperBound)
 
         // Line starts strictly inside (lowerBound, upperBound] belong to newlines that are removed.
         let firstKept = line(at: range.lowerBound) + 1
@@ -92,6 +102,12 @@ public struct TextStorage: Sendable {
             }
         }
         lineStarts.replaceSubrange(firstKept..<firstAfter, with: inserted)
+
+        let newEnd = range.lowerBound + units.count
+        return TextEdit(
+            start: range.lowerBound, oldEnd: range.upperBound, newEnd: newEnd,
+            startPoint: startPoint, oldEndPoint: oldEndPoint, newEndPoint: point(at: newEnd)
+        )
     }
 
     /// Line starts of `units`, offset by `base`. The first element is always `base`.

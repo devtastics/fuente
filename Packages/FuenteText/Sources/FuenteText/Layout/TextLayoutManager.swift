@@ -224,10 +224,11 @@ public final class TextLayoutManager {
     }
 
     /// Edits the text and invalidates the lines the edit touched.
-    public func replace(_ range: Range<Int>, with text: String) {
+    @discardableResult
+    public func replace(_ range: Range<Int>, with text: String) -> TextEdit {
         let firstLine = storage.line(at: range.lowerBound)
         let lastOldLine = storage.line(at: range.upperBound)
-        storage.replace(range, with: text)
+        let edit = storage.replace(range, with: text)
         adjustStyles(for: range, insertedLength: text.utf16.count)
         let lastNewLine = storage.line(at: range.lowerBound + text.utf16.count)
 
@@ -239,6 +240,7 @@ public final class TextLayoutManager {
             typesetLineCount = layouts.lazy.filter { $0 != nil }.count
             rebuildHeights()
         }
+        return edit
     }
 
     private func invalidate(_ line: Int) {

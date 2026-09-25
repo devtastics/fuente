@@ -33,11 +33,11 @@ extension TextView {
             }
         }
 
-        let clock = ContinuousClock()
-        let elapsed = clock.measure { layoutManager.replace(range, with: text) }
-        EditorMetrics.shared.recordEdit(elapsed)
+        let start = ContinuousClock.now
+        let edit = layoutManager.replace(range, with: text)
+        EditorMetrics.shared.recordEdit(ContinuousClock.now - start)
         selection = selectionAfter ?? TextSelection(caret: newRange.upperBound)
-        didEdit()
+        didEdit(edit)
     }
 
     /// One undo group per registration, independent of the run loop, so each undo reverts exactly one edit
@@ -52,12 +52,14 @@ extension TextView {
         if grouped { manager.endUndoGrouping() }
     }
 
-    func didEdit() {
+    func didEdit(_ edit: TextEdit) {
         needsLayout = true
         needsDisplay = true
         gutter?.updateThickness()
         delegate?.textViewDidChangeText(self)
-        NotificationCenter.default.post(name: TextView.textDidChangeNotification, object: self)
+        NotificationCenter.default.post(
+            name: TextView.textDidChangeNotification, object: self, userInfo: [TextView.editUserInfoKey: edit]
+        )
     }
 
     /// Inserts typed text, coalescing consecutive keystrokes into one undo action.

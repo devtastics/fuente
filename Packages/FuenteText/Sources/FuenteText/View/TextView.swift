@@ -10,7 +10,9 @@ public final class TextView: NSView {
     public let layoutManager: TextLayoutManager
 
     /// Posted with the view as object after every text change made through the view.
+    /// `userInfo[editUserInfoKey]` carries the `TextEdit` that was applied.
     public static let textDidChangeNotification = Notification.Name("FuenteText.TextView.textDidChange")
+    public static let editUserInfoKey = "edit"
 
     public var selection = TextSelection(caret: 0) {
         didSet {

@@ -1,3 +1,4 @@
+import FuenteText
 import TreeSitter
 
 /// Owns a `TSParser`. Not thread-safe: use from one isolation domain.
@@ -33,6 +34,19 @@ final class Tree {
     deinit { ts_tree_delete(pointer) }
 
     var rootNode: Node { Node(ts_tree_root_node(pointer)) }
+
+    /// Tells the tree about a change in the text it was parsed from, so the next parse can reuse it.
+    func edit(_ edit: TextEdit) {
+        var input = TSInputEdit(
+            start_byte: UInt32(edit.start * 2),
+            old_end_byte: UInt32(edit.oldEnd * 2),
+            new_end_byte: UInt32(edit.newEnd * 2),
+            start_point: TSPoint(row: UInt32(edit.startPoint.row), column: UInt32(edit.startPoint.column * 2)),
+            old_end_point: TSPoint(row: UInt32(edit.oldEndPoint.row), column: UInt32(edit.oldEndPoint.column * 2)),
+            new_end_point: TSPoint(row: UInt32(edit.newEndPoint.row), column: UInt32(edit.newEndPoint.column * 2))
+        )
+        ts_tree_edit(pointer, &input)
+    }
 }
 
 /// A node in a syntax tree. Byte offsets are UTF-16 bytes, so code-unit offsets are half of them.

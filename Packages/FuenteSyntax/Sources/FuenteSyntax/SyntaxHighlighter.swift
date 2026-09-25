@@ -19,6 +19,9 @@ public final class SyntaxHighlighter {
     private var task: Task<Void, Never>?
     private var coveredRange: Range<Int> = 0..<0
 
+    /// Edits not yet handed to the engine. Every text change appends here; every pass drains it.
+    private var pendingEdits: [TextEdit] = []
+
     public init(textView: TextView, language: Language, theme: Theme) {
         self.textView = textView
         self.theme = theme
@@ -36,6 +39,13 @@ public final class SyntaxHighlighter {
     }
 
     @objc private func textDidChange(_ notification: Notification) {
+        if let edit = notification.userInfo?[TextView.editUserInfoKey] as? TextEdit {
+            pendingEdits.append(edit)
+        } else {
+            // A change we cannot describe: the next pass must parse from scratch.
+            pendingEdits.removeAll()
+            Task { await engine.reset() }
+        }
         highlight()
     }
 
@@ -52,10 +62,12 @@ public final class SyntaxHighlighter {
         task?.cancel()
         let units = textView.layoutManager.storage.utf16Units
         let range = textView.visibleCharacterRange(marginLines: marginLines)
+        let edits = pendingEdits
+        pendingEdits.removeAll()
         let engine = engine
         task = Task { [weak self] in
             let start = ContinuousClock.now
-            let spans = await engine.highlights(for: units, in: range)
+            let spans = await engine.highlights(for: units, in: range, edits: edits)
             guard !Task.isCancelled, let self else { return }
             EditorMetrics.shared.recordHighlight(ContinuousClock.now - start, spans: spans.count)
             self.coveredRange = range
