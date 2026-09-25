@@ -96,13 +96,20 @@ extension TextView {
         replace(range, with: "")
     }
 
+    /// Newline keeps the current line's indentation and adds one level after an opening bracket.
     public override func insertNewline(_ sender: Any?) {
         typingRun = nil
-        replace(selection.range, with: "\n")
+        let storage = layoutManager.storage
+        let range = selection.range
+        let lineRange = storage.lineRange(storage.line(at: range.lowerBound))
+        let lineText = storage.substring(lineRange.lowerBound..<range.lowerBound)
+        let leading = String(lineText.prefix { $0 == " " || $0 == "\t" })
+        let opensBlock = lineText.last.map { "{([".contains($0) } ?? false
+        replace(range, with: "\n" + leading + (opensBlock ? indentation.unit : ""))
     }
 
     public override func insertTab(_ sender: Any?) {
-        insertTyped("\t")
+        insertTyped(indentation.unit)
     }
 
     // MARK: - Undo

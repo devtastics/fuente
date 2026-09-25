@@ -18,6 +18,7 @@ public final class TextView: NSView {
             needsDisplay = true
             gutter?.needsDisplay = true
             scrollCaretToVisible()
+            restartBlink()
         }
     }
 
@@ -45,6 +46,17 @@ public final class TextView: NSView {
 
     /// Horizontal inset before the first glyph of every line.
     public var textInset: CGFloat = 8 { didSet { needsLayout = true } }
+
+    /// What the Tab key inserts and what auto-indent adds after an opening bracket.
+    public var indentation: Indentation = .spaces(4)
+
+    /// Background of the line holding the caret. `nil` disables it.
+    public var currentLineColor: NSColor? = NSColor.textColor.withAlphaComponent(0.05) { didSet { needsDisplay = true } }
+
+    /// Blink state: the caret is drawn only when true. Reset to visible on every selection change.
+    private var caretVisible = true
+    private var blinkTimer: Timer?
+    public var caretBlinkInterval: TimeInterval = 0.55
 
     public weak var delegate: TextViewDelegate?
 
@@ -78,12 +90,36 @@ public final class TextView: NSView {
 
     public override func becomeFirstResponder() -> Bool {
         needsDisplay = true
+        restartBlink()
         return super.becomeFirstResponder()
     }
 
     public override func resignFirstResponder() -> Bool {
         needsDisplay = true
+        stopBlink()
         return super.resignFirstResponder()
+    }
+
+    // MARK: - Caret blink
+
+    /// Shows the caret and starts the blink cycle over, so it never blinks away right after moving.
+    func restartBlink() {
+        stopBlink()
+        caretVisible = true
+        guard isActive, caretBlinkInterval > 0 else { return }
+        blinkTimer = Timer.scheduledTimer(withTimeInterval: caretBlinkInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.caretVisible.toggle()
+                self.setNeedsDisplay(self.caretRect.insetBy(dx: -1, dy: 0))
+            }
+        }
+    }
+
+    private func stopBlink() {
+        blinkTimer?.invalidate()
+        blinkTimer = nil
+        caretVisible = true
     }
 
     private var isActive: Bool { window?.firstResponder === self }
@@ -172,6 +208,7 @@ public final class TextView: NSView {
         backgroundColor.setFill()
         dirtyRect.fill()
 
+        drawCurrentLine()
         drawSelection()
 
         // CoreText draws with y up; flip the text matrix once so glyphs come out upright in our flipped view.
@@ -199,6 +236,14 @@ public final class TextView: NSView {
         }
     }
 
+    private func drawCurrentLine() {
+        guard let currentLineColor, selection.isEmpty, isActive else { return }
+        let line = storage.line(at: selection.head)
+        let rect = CGRect(x: 0, y: layoutManager.yOffset(ofLine: line), width: bounds.width, height: layoutManager.height(ofLine: line))
+        currentLineColor.setFill()
+        rect.fill()
+    }
+
     private func drawSelection() {
         guard !selection.isEmpty else { return }
         let color: NSColor = isActive ? .selectedTextBackgroundColor : .unemphasizedSelectedTextBackgroundColor
@@ -217,7 +262,7 @@ public final class TextView: NSView {
     }
 
     private func drawCaret() {
-        guard isActive, selection.isEmpty else { return }
+        guard isActive, selection.isEmpty, caretVisible else { return }
         NSColor.textInsertionPointColor.setFill()
         caretRect.fill()
     }
