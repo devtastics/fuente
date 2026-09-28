@@ -6,7 +6,8 @@ public enum Languages {
         name: "PHP",
         fileExtensions: ["php", "phtml", "inc"],
         pointer: PHPGrammar.language,
-        highlightsQuery: PHPGrammar.highlightsQuery
+        highlightsQuery: PHPGrammar.highlightsQuery,
+        lineComment: "//"
     )
 
     public static let all: [Language] = [php]

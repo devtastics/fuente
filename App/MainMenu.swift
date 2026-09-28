@@ -8,6 +8,7 @@ enum MainMenu {
         menu.addItem(appMenu())
         menu.addItem(fileMenu())
         menu.addItem(editMenu())
+        menu.addItem(editorMenu())
         menu.addItem(windowMenu())
         #if DEBUG
         menu.addItem(debugMenu())
@@ -87,6 +88,25 @@ enum MainMenu {
         add("Hide Find Bar", .hideFindInterface, "")
         item.submenu = submenu
         return item
+    }
+
+    /// Xcode's editor shortcuts, reached through the responder chain: the text view or its editor answers.
+    private static func editorMenu() -> NSMenuItem {
+        let submenu = NSMenu(title: "Editor")
+        func add(_ title: String, _ selector: String, _ key: String, _ modifiers: NSEvent.ModifierFlags = [.command]) {
+            let entry = submenu.addItem(withTitle: title, action: Selector((selector)), keyEquivalent: key)
+            entry.keyEquivalentModifierMask = modifiers
+        }
+        add("Toggle Comment", "toggleComment:", "/")
+        add("Shift Right", "shiftRight:", "]")
+        add("Shift Left", "shiftLeft:", "[")
+        submenu.addItem(.separator())
+        add("Duplicate", "duplicateLine:", "d")
+        add("Move Line Up", "moveLineUp:", "[", [.command, .option])
+        add("Move Line Down", "moveLineDown:", "]", [.command, .option])
+        submenu.addItem(.separator())
+        add("Go to Line…", "goToLine:", "l")
+        return item(submenu)
     }
 
     private static func windowMenu() -> NSMenuItem {

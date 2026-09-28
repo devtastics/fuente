@@ -94,6 +94,7 @@ extension TextView {
     // MARK: - Deletion
 
     public override func deleteBackward(_ sender: Any?) {
+        if deleteEmptyPairIfNeeded() { return }
         typingRun = nil
         let range = selection.isEmpty
             ? layoutManager.storage.offset(before: selection.head)..<selection.head
@@ -113,6 +114,7 @@ extension TextView {
 
     /// Newline keeps the current line's indentation and adds one level after an opening bracket.
     public override func insertNewline(_ sender: Any?) {
+        if openBlockOnNewlineIfNeeded() { return }
         typingRun = nil
         let storage = layoutManager.storage
         let range = selection.range
@@ -121,10 +123,6 @@ extension TextView {
         let leading = String(lineText.prefix { $0 == " " || $0 == "\t" })
         let opensBlock = lineText.last.map { "{([".contains($0) } ?? false
         replace(range, with: "\n" + leading + (opensBlock ? indentation.unit : ""))
-    }
-
-    public override func insertTab(_ sender: Any?) {
-        insertTyped(indentation.unit)
     }
 
     // MARK: - Undo
@@ -179,6 +177,7 @@ extension TextView: @preconcurrency NSTextInputClient {
             replace(range, with: text)
             return
         }
+        if handleAutoPair(text) { return }
         insertTyped(text)
     }
 

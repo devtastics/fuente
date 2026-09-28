@@ -37,6 +37,27 @@ final class EditorViewController: NSViewController, TextViewDelegate {
 
         if let ext = document.fileExtension, let language = Languages.language(forFileExtension: ext) {
             highlighter = SyntaxHighlighter(textView: textView, language: language, theme: .system)
+            textView.lineCommentPrefix = language.lineComment
+        }
+    }
+
+    /// Editor > Go to Line… (Cmd+L): a small sheet with a number field.
+    @objc func goToLine(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Go to Line"
+        alert.addButton(withTitle: "Go")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        field.placeholderString = "Line number"
+        let current = textView.layoutManager.storage.line(at: textView.selection.head) + 1
+        field.stringValue = String(current)
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        guard let window = view.window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let line = Int(field.stringValue.trimmingCharacters(in: .whitespaces)), let self else { return }
+            self.textView.goToLine(line)
+            window.makeFirstResponder(self.textView)
         }
     }
 

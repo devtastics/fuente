@@ -69,6 +69,15 @@ public final class TextView: NSView {
     /// What the Tab key inserts and what auto-indent adds after an opening bracket.
     public var indentation: Indentation = .spaces(4)
 
+    /// Typing an opener inserts its closer; typing the closer steps over it; Backspace removes an empty pair.
+    public var autoClosesPairs = true
+
+    /// Prefix for Toggle Comment (Cmd+/), e.g. `//`. `nil` disables it. Set from the document's language.
+    public var lineCommentPrefix: String?
+
+    /// Background behind the bracket at the caret and its match. `nil` disables it.
+    public var bracketMatchColor: NSColor? = NSColor.textColor.withAlphaComponent(0.12) { didSet { invalidateVisible() } }
+
     /// Background of the line holding the caret. `nil` disables it.
     public var currentLineColor: NSColor? = NSColor.textColor.withAlphaComponent(0.05) { didSet { invalidateVisible() } }
 
@@ -245,6 +254,7 @@ public final class TextView: NSView {
         dirtyRect.fill()
 
         drawCurrentLine()
+        drawBracketMatch()
         drawSelection()
 
         // CoreText draws with y up; flip the text matrix once so glyphs come out upright in our flipped view.
@@ -279,6 +289,16 @@ public final class TextView: NSView {
         rect.fill()
     }
 
+    private func drawBracketMatch() {
+        guard let bracketMatchColor, selection.isEmpty, isActive, let (first, second) = matchingBracketRanges(at: selection.head) else { return }
+        bracketMatchColor.setFill()
+        for range in [first, second] {
+            for rect in layoutManager.selectionRects(for: range, newlineWidth: 0) {
+                rect.offsetBy(dx: textInset, dy: 0).insetBy(dx: 0, dy: 1).fill()
+            }
+        }
+    }
+
     private func drawSelection() {
         guard !selection.isEmpty else { return }
         let color: NSColor = isActive ? .selectedTextBackgroundColor : .unemphasizedSelectedTextBackgroundColor
@@ -301,7 +321,18 @@ public final class TextView: NSView {
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
-        select(at: point, extending: event.modifierFlags.contains(.shift))
+        switch event.clickCount {
+        case 2:
+            let word = wordRange(at: offset(at: point))
+            selection = TextSelection(anchor: word.lowerBound, head: word.upperBound)
+            typingRun = nil
+        case 3:
+            let line = fullLineRange(at: offset(at: point))
+            selection = TextSelection(anchor: line.lowerBound, head: line.upperBound)
+            typingRun = nil
+        default:
+            select(at: point, extending: event.modifierFlags.contains(.shift))
+        }
     }
 
     public override func mouseDragged(with event: NSEvent) {
