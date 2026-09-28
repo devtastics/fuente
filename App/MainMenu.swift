@@ -81,6 +81,8 @@ enum MainMenu {
             entry.keyEquivalentModifierMask = modifiers
         }
         add("Find…", .showFindInterface, "f")
+        let project = submenu.addItem(withTitle: "Find in Project…", action: Selector(("findInProject:")), keyEquivalent: "f")
+        project.keyEquivalentModifierMask = [.command, .shift]
         add("Find and Replace…", .showReplaceInterface, "f", [.command, .option])
         add("Find Next", .nextMatch, "g")
         add("Find Previous", .previousMatch, "g", [.command, .shift])

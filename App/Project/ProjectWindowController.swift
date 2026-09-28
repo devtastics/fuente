@@ -1,10 +1,12 @@
 import AppKit
+import FuenteText
 import FuenteWorkspace
 
 /// A project window: navigator on the left, editors on the right. Xcode's layout, one window per folder.
 final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     let workspace: Workspace
-    private let navigator: NavigatorViewController
+    private let sidebar: SidebarViewController
+    private var navigator: NavigatorViewController { sidebar.navigator }
     private let editorArea = EditorAreaViewController()
     private let splitViewController = NSSplitViewController()
     private let stateStore = WorkspaceStateStore.default
@@ -12,7 +14,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     init(workspace: Workspace) {
         self.workspace = workspace
-        navigator = NavigatorViewController(workspace: workspace)
+        sidebar = SidebarViewController(workspace: workspace)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
@@ -25,13 +27,13 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         window.setFrameAutosaveName("ProjectWindow-\(workspace.rootURL.path)")
         super.init(window: window)
 
-        let sidebar = NSSplitViewItem(sidebarWithViewController: navigator)
-        sidebar.minimumThickness = 180
-        sidebar.maximumThickness = 480
-        sidebar.canCollapse = true
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        sidebarItem.minimumThickness = 200
+        sidebarItem.maximumThickness = 520
+        sidebarItem.canCollapse = true
         let content = NSSplitViewItem(viewController: editorArea)
         content.minimumThickness = 400
-        splitViewController.addSplitViewItem(sidebar)
+        splitViewController.addSplitViewItem(sidebarItem)
         splitViewController.addSplitViewItem(content)
 
         let toolbar = NSToolbar(identifier: "ProjectToolbar")
@@ -47,6 +49,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         updateTitle()
 
         navigator.onSelectFile = { [weak self] url in self?.open(url) }
+        sidebar.find.onSelectMatch = { [weak self] match in self?.open(match) }
         editorArea.onChange = { [weak self] _ in self?.updateTitle() }
         workspace.onFoldersChanged = { [weak self] nodes in self?.navigator.reload(nodes) }
         workspace.onDocumentsChangedOnDisk = { [weak self] documents in
@@ -76,6 +79,27 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         } catch {
             NSAlert(error: error).runModal()
         }
+    }
+
+    /// Opens the file of a search match and selects the match.
+    func open(_ match: SearchMatch) {
+        open(match.url)
+        guard let editor = editorArea.activeEditor, editor.document.url == match.url else { return }
+        let storage = editor.textView.layoutManager.storage
+        guard match.line < storage.lineCount else { return }
+        let start = storage.lineStarts[match.line] + match.range.lowerBound
+        let end = min(start + match.range.count, storage.lineRange(match.line).upperBound)
+        editor.textView.selection = TextSelection(anchor: start, head: end)
+        editor.textView.scrollToVisible(editor.textView.caretRect.insetBy(dx: 0, dy: -editor.textView.bounds.height / 3))
+    }
+
+    /// Edit > Find > Find in Project… (Cmd+Shift+F).
+    @objc func findInProject(_ sender: Any?) {
+        if splitViewController.splitViewItems.first?.isCollapsed == true {
+            splitViewController.splitViewItems.first?.animator().isCollapsed = false
+        }
+        sidebar.show(.find)
+        sidebar.find.focus()
     }
 
     func activate(_ document: Document) {
