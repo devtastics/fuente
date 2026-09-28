@@ -62,9 +62,11 @@ public final class DirectoryWatcher {
             let url = URL(fileURLWithPath: path).standardizedFileURL
             // A folder that itself appeared or vanished is a change in its parent; a folder whose
             // contents changed is reported on the folder. Report the parent in both cases: it covers both.
-            let folder = isDirectory ? url.deletingLastPathComponent() : url.deletingLastPathComponent()
-            if seen.insert(folder.path).inserted { folders.append(folder) }
-            if isDirectory, seen.insert(url.path).inserted { folders.append(url) }
+            let rootPath = rootURL.path
+            func isInsideRoot(_ candidate: URL) -> Bool { candidate.path == rootPath || candidate.path.hasPrefix(rootPath + "/") }
+            let parent = url.deletingLastPathComponent()
+            if isInsideRoot(parent), seen.insert(parent.path).inserted { folders.append(parent) }
+            if isDirectory, isInsideRoot(url), seen.insert(url.path).inserted { folders.append(url) }
         }
         guard !folders.isEmpty else { return }
         Task { @MainActor [weak self] in self?.onChange?(folders) }
