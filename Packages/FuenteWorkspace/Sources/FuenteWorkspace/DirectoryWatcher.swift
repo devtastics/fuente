@@ -13,8 +13,12 @@ public final class DirectoryWatcher {
     nonisolated(unsafe) private var stream: FSEventStreamRef?
     private let queue = DispatchQueue(label: "com.devtastics.fuente.fsevents")
 
+    /// FSEvents reports real paths (`/private/var/...`); we map them back onto the root as the app knows it.
+    private let resolvedRootPath: String
+
     public init(rootURL: URL) {
         self.rootURL = rootURL.standardizedFileURL
+        resolvedRootPath = self.rootURL.resolvingSymlinksInPath().path
     }
 
     deinit {
@@ -51,9 +55,10 @@ public final class DirectoryWatcher {
     nonisolated fileprivate func handle(paths: [String], flags: [FSEventStreamEventFlags]) {
         var folders: [URL] = []
         var seen: Set<String> = []
-        for (path, flag) in zip(paths, flags) {
-            if path.contains("/.git/") || path.hasSuffix("/.git") { continue }
+        for (rawPath, flag) in zip(paths, flags) {
+            if rawPath.contains("/.git/") || rawPath.hasSuffix("/.git") { continue }
             let isDirectory = flag & UInt32(kFSEventStreamEventFlagItemIsDir) != 0
+            let path = rawPath.hasPrefix(resolvedRootPath) ? rootURL.path + rawPath.dropFirst(resolvedRootPath.count) : rawPath
             let url = URL(fileURLWithPath: path).standardizedFileURL
             // A folder that itself appeared or vanished is a change in its parent; a folder whose
             // contents changed is reported on the folder. Report the parent in both cases: it covers both.

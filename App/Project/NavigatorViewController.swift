@@ -1,11 +1,31 @@
 import AppKit
 import FuenteWorkspace
 
-/// The project navigator: the file tree as a source list.
+/// Outline view that forwards the Delete key and asks its delegate for a context menu.
+final class NavigatorOutlineView: NSOutlineView {
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 51 || event.keyCode == 117 {   // Delete, Forward Delete
+            NSApp.sendAction(#selector(NavigatorViewController.moveToTrash(_:)), to: nil, from: self)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        if row >= 0, !selectedRowIndexes.contains(row) { selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }
+        return (delegate as? NavigatorViewController)?.contextMenu(forRow: row)
+    }
+}
+
+/// The project navigator: the file tree as a source list, with file operations.
 @MainActor
-final class NavigatorViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+final class NavigatorViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSTextFieldDelegate {
     private let workspace: Workspace
-    private let outlineView = NSOutlineView()
+    private let outlineView = NavigatorOutlineView()
+
+    /// Shows an error to the user. Set by the window controller.
+    var onError: ((Error) -> Void)?
 
     /// True while code, not the user, changes expansion or selection: row shifts must not open files.
     private var isAdjusting = false
@@ -128,6 +148,107 @@ final class NavigatorViewController: NSViewController, NSOutlineViewDataSource, 
         cell.textField?.stringValue = node.name
         cell.imageView?.image = NSWorkspace.shared.icon(forFile: node.url.path)
         return cell
+    }
+
+    // MARK: - File operations
+
+    /// The node the user is acting on: the clicked row, else the selection, else the root.
+    private var targetNode: FileNode {
+        let row = outlineView.clickedRow >= 0 ? outlineView.clickedRow : outlineView.selectedRow
+        return (row >= 0 ? outlineView.item(atRow: row) as? FileNode : nil) ?? workspace.root
+    }
+
+    /// The folder a new item goes into: the target if it is a folder, else its parent.
+    private var targetFolder: FileNode {
+        let node = targetNode
+        return node.isDirectory ? node : (node.parent ?? workspace.root)
+    }
+
+    func contextMenu(forRow row: Int) -> NSMenu {
+        let menu = NSMenu()
+        let node = row >= 0 ? outlineView.item(atRow: row) as? FileNode : nil
+        menu.addItem(withTitle: "New File", action: #selector(newFile(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "New Folder", action: #selector(newFolder(_:)), keyEquivalent: "")
+        if node != nil {
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Rename", action: #selector(renameItem(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "Move to Trash", action: #selector(moveToTrash(_:)), keyEquivalent: "")
+        }
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Show in Finder", action: #selector(showInFinder(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Copy Path", action: #selector(copyPath(_:)), keyEquivalent: "")
+        for item in menu.items { item.target = self }
+        return menu
+    }
+
+    @objc func newFile(_ sender: Any?) {
+        let folder = targetFolder
+        do {
+            let url = try workspace.createFile(in: folder.url)
+            outlineView.expandItem(folder === workspace.root ? nil : folder)
+            beginEditingName(of: url)
+        } catch { onError?(error) }
+    }
+
+    @objc func newFolder(_ sender: Any?) {
+        let folder = targetFolder
+        do {
+            let url = try workspace.createFolder(in: folder.url)
+            outlineView.expandItem(folder === workspace.root ? nil : folder)
+            beginEditingName(of: url)
+        } catch { onError?(error) }
+    }
+
+    @objc func renameItem(_ sender: Any?) {
+        let node = targetNode
+        guard node !== workspace.root else { return }
+        beginEditingName(of: node.url)
+    }
+
+    @objc func moveToTrash(_ sender: Any?) {
+        let node = targetNode
+        guard node !== workspace.root else { return }
+        do { try workspace.trash(node.url) } catch { onError?(error) }
+    }
+
+    @objc func showInFinder(_ sender: Any?) {
+        NSWorkspace.shared.activateFileViewerSelecting([targetNode.url])
+    }
+
+    @objc func copyPath(_ sender: Any?) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(targetNode.url.path, forType: .string)
+    }
+
+    /// Puts the row's name into edit mode; `controlTextDidEndEditing` performs the rename.
+    private func beginEditingName(of url: URL) {
+        guard let node = workspace.root.node(for: url) else { return }
+        let row = outlineView.row(forItem: node)
+        guard row >= 0 else { return }
+        outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        outlineView.scrollRowToVisible(row)
+        guard let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView, let field = cell.textField else { return }
+        field.isEditable = true
+        field.delegate = self
+        view.window?.makeFirstResponder(field)
+        field.currentEditor()?.selectedRange = NSRange(location: 0, length: ((node.name as NSString).deletingPathExtension as NSString).length)
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        field.isEditable = false
+        field.delegate = nil
+        let row = outlineView.row(for: field)
+        guard row >= 0, let node = outlineView.item(atRow: row) as? FileNode else { return }
+        let newName = field.stringValue
+        guard newName != node.name else { return }
+        do {
+            let url = try workspace.rename(node.url, to: newName)
+            if let renamed = workspace.root.node(for: url) { reveal(renamed.url) }
+        } catch {
+            field.stringValue = node.name
+            onError?(error)
+        }
     }
 
     private func makeCell(_ identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {

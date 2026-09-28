@@ -78,13 +78,17 @@ private func makeFolder() throws -> URL {
         let root = try makeFolder()
         defer { try? FileManager.default.removeItem(at: root) }
         let watcher = DirectoryWatcher(rootURL: root)
+        let expected = root.appendingPathComponent("src").standardizedFileURL.path
         var received: [URL] = []
+        // Keep collecting until the folder we touch shows up: early deliveries may be older events.
         let delivered = Task { @MainActor in
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 watcher.onChange = { folders in
-                    received = folders
-                    watcher.onChange = nil
-                    continuation.resume()
+                    received += folders
+                    if received.contains(where: { $0.path == expected }) {
+                        watcher.onChange = nil
+                        continuation.resume()
+                    }
                 }
             }
         }
@@ -100,7 +104,7 @@ private func makeFolder() throws -> URL {
             return first
         }
         watcher.stop()
-        #expect(ok, "FSEvents did not deliver within 5 s")
-        #expect(received.map(\.path).contains(root.appendingPathComponent("src").standardizedFileURL.path))
+        #expect(ok, "FSEvents did not deliver a change for src within 5 s")
+        #expect(received.allSatisfy { $0.path.hasPrefix(root.standardizedFileURL.path) }, "paths are mapped onto the root as given")
     }
 }

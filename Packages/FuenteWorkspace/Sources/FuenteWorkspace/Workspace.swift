@@ -92,6 +92,82 @@ public final class Workspace {
         return state.expandedFolders.map(url(forRelativePath:))
     }
 
+    // MARK: - File operations
+
+    /// Creates an empty file in `folder` with a name that does not collide, refreshes the folder, returns the URL.
+    @discardableResult
+    public func createFile(in folder: URL, named name: String = "untitled.txt") throws -> URL {
+        let url = Workspace.availableURL(in: folder, named: name)
+        guard FileManager.default.createFile(atPath: url.path, contents: Data()) else { throw WorkspaceError.cannotCreate(url) }
+        refreshFolder(folder)
+        return url
+    }
+
+    @discardableResult
+    public func createFolder(in folder: URL, named name: String = "untitled folder") throws -> URL {
+        let url = Workspace.availableURL(in: folder, named: name)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        refreshFolder(folder)
+        return url
+    }
+
+    /// Renames within the same folder. Open documents under the old URL follow it.
+    @discardableResult
+    public func rename(_ url: URL, to name: String) throws -> URL {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !trimmed.contains("/") else { throw WorkspaceError.invalidName(name) }
+        let destination = url.deletingLastPathComponent().appendingPathComponent(trimmed).standardizedFileURL
+        guard destination.path != url.standardizedFileURL.path else { return url }
+        guard !FileManager.default.fileExists(atPath: destination.path) else { throw WorkspaceError.alreadyExists(destination) }
+        try FileManager.default.moveItem(at: url, to: destination)
+        retargetDocuments(from: url, to: destination)
+        refreshFolder(url.deletingLastPathComponent())
+        return destination
+    }
+
+    /// Moves to the Trash and closes any document that lived inside.
+    public func trash(_ url: URL) throws {
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        let prefix = url.standardizedFileURL.path
+        for document in documents where document.url.map({ $0.path == prefix || $0.path.hasPrefix(prefix + "/") }) == true {
+            close(document)
+        }
+        refreshFolder(url.deletingLastPathComponent())
+    }
+
+    private func retargetDocuments(from old: URL, to new: URL) {
+        let oldPath = old.standardizedFileURL.path
+        for document in documents {
+            guard let path = document.url?.path else { continue }
+            if path == oldPath {
+                document.moved(to: new)
+            } else if path.hasPrefix(oldPath + "/") {
+                document.moved(to: new.appendingPathComponent(String(path.dropFirst(oldPath.count + 1))))
+            }
+        }
+    }
+
+    private func refreshFolder(_ folder: URL) {
+        if let node = root.node(for: folder), node.isDirectory {
+            _ = node.children          // make sure it is loaded, so the new entry shows up
+            node.refresh()
+            onFoldersChanged?([node])
+        }
+    }
+
+    /// `name`, or `name 2`, `name 3`... when taken. The extension stays at the end.
+    static func availableURL(in folder: URL, named name: String) -> URL {
+        let base = (name as NSString).deletingPathExtension
+        let ext = (name as NSString).pathExtension
+        var attempt = 1
+        while true {
+            let candidate = attempt == 1 ? name : (ext.isEmpty ? "\(base) \(attempt)" : "\(base) \(attempt).\(ext)")
+            let url = folder.appendingPathComponent(candidate)
+            if !FileManager.default.fileExists(atPath: url.path) { return url }
+            attempt += 1
+        }
+    }
+
     // MARK: - Watching the disk
 
     private var watcher: DirectoryWatcher?
@@ -134,4 +210,10 @@ public final class Workspace {
         }
         if !changedDocuments.isEmpty { onDocumentsChangedOnDisk?(changedDocuments) }
     }
+}
+
+public enum WorkspaceError: Error, Equatable {
+    case cannotCreate(URL)
+    case invalidName(String)
+    case alreadyExists(URL)
 }

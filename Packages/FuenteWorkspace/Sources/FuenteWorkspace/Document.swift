@@ -43,6 +43,11 @@ public final class Document: Identifiable {
         return text
     }
 
+    /// The file was moved or renamed on our behalf; keep following it.
+    public func moved(to newURL: URL) {
+        url = newURL.standardizedFileURL
+    }
+
     public var name: String { url?.lastPathComponent ?? "Untitled" }
     public var fileExtension: String? { url?.pathExtension }
 
